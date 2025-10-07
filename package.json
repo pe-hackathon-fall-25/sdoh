@@ -1,0 +1,24 @@
+{
+  "name": "sdoh-claims-bridge",
+  "private": true,
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "api:dev": "npm run dev -w server",
+    "web:dev": "npm run dev -w web",
+    "build": "npm -w server run build && npm -w web run build",
+    "test": "npm -w server run test",
+    "db:generate": "npm -w server run db:generate",
+    "db:push": "npm -w server run db:push",
+    "db:seed": "npm -w server run db:seed"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.7.0",
+    "@types/pdfkit": "^0.17.3",
+    "concurrently": "^9.0.0"
+  }
+}

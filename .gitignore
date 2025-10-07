@@ -1,0 +1,67 @@
+# --- Node & package managers ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+.pnpm-store/
+.pnp.*
+.pnp.cjs
+
+# --- TypeScript ---
+*.tsbuildinfo
+
+# --- Build outputs / caches ---
+dist/
+build/
+.vite/
+.cache/
+.tmp/
+temp/
+
+# --- Testing / coverage ---
+coverage/
+.nyc_output/
+jest-html-reporters-*.html
+
+# --- Env & secrets (keep only examples) ---
+.env
+.env.*
+!.env.example
+
+# --- Logs ---
+logs/
+*.log
+*.log.*
+
+# --- OS / Editor junk ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Docker / local DB artifacts ---
+docker-compose.override.yml
+pgdata/
+*.dump
+*.sql
+
+# --- Drizzle ORM ---
+# We WANT to commit migrations in ./drizzle
+# Ignore transient metadata (if present), but keep SQL migrations
+drizzle/meta/
+drizzle/*.sqlite
+
+# --- Web (Vite/React) ---
+web/.vite/
+web/dist/
+web/node_modules/
+
+# --- Server (Express/TS) ---
+server/dist/
+server/node_modules/
+
+# --- Misc tooling ---
+*.iml

@@ -1,0 +1,23 @@
+openapi: 3.0.3
+info:
+  title: SDOH Claims Bridge API
+  version: 0.1.0
+paths:
+  /api/screenings:
+    post:
+      summary: Create screening
+      responses:
+        '200':
+          description: ok
+  /api/zcodes/suggest:
+    post:
+      summary: Suggest Z-codes
+      responses: { '200': { description: ok } }
+  /api/zcodes/finalize:
+    post:
+      summary: Finalize Z-codes
+      responses: { '200': { description: ok } }
+  /api/evidence/pdf:
+    post:
+      summary: Generate evidence PDF
+      responses: { '200': { description: ok } }
