@@ -1,20 +1,113 @@
 import { useMemo, useState } from 'react';
-import { api } from '../api';
+import { api, type DetectionResponse } from '../api';
+
+type TranscriptMessage = {
+  speaker: string;
+  text: string;
+  language?: string;
+  timestamp?: string;
+};
+
+type TranscriptSample = {
+  id: string;
+  title: string;
+  summary: string;
+  transcript: TranscriptMessage[];
+};
 
 type Suggestion = {
   code: string;
   label: string;
   confidence: number;
+  severity: string;
+  urgency: string;
   rationale: string;
-  citations?: string[];
+  evidence: TranscriptMessage[];
+  estimatedRevenue: number;
 };
 
-type TimelineItem = {
-  title: string;
-  date: string;
-  description: string;
-  status: 'completed' | 'in-progress';
-};
+const transcriptSamples: TranscriptSample[] = [
+  {
+    id: 'alex-rivera',
+    title: 'Alex Rivera | Food + Utilities',
+    summary: 'Bilingual outreach call covering food access, SNAP renewal, and power shutoff risk.',
+    transcript: [
+      {
+        speaker: 'navigator',
+        text: 'Hola Alex, thanks for picking up. We are checking in about groceries and your SNAP renewal.',
+        language: 'es',
+        timestamp: '2025-01-17T15:03:00Z',
+      },
+      {
+        speaker: 'member',
+        text: 'Yeah it has been rough. The food bank is the only place I eat lately and sometimes they close early.',
+        language: 'en',
+        timestamp: '2025-01-17T15:03:27Z',
+      },
+      {
+        speaker: 'member',
+        text: 'Mi nevera está vacía casi siempre y me salto comidas.',
+        language: 'es',
+        timestamp: '2025-01-17T15:03:48Z',
+      },
+      {
+        speaker: 'navigator',
+        text: 'We can escalate the emergency pantry delivery. Did the utility company restore your electricity yet?',
+        language: 'en',
+        timestamp: '2025-01-17T15:04:03Z',
+      },
+      {
+        speaker: 'member',
+        text: 'No, my electricity got shut off on Tuesday and they said it might take a week unless I pay everything.',
+        language: 'en',
+        timestamp: '2025-01-17T15:04:18Z',
+      },
+      {
+        speaker: 'member',
+        text: 'Estoy durmiendo en mi coche por las noches para mantenerme caliente.',
+        language: 'es',
+        timestamp: '2025-01-17T15:04:39Z',
+      },
+      {
+        speaker: 'navigator',
+        text: 'That is not safe. We will activate utility relief and emergency housing supports right now.',
+        language: 'en',
+        timestamp: '2025-01-17T15:04:55Z',
+      },
+    ],
+  },
+  {
+    id: 'maria-lopez',
+    title: 'María López | Transportation + Meds',
+    summary: 'SMS follow-up about transportation barriers and medication affordability.',
+    transcript: [
+      {
+        speaker: 'member',
+        text: 'My landlord is evicting me next month so I am packing up.',
+        language: 'en',
+        timestamp: '2025-01-12T19:12:45Z',
+      },
+      {
+        speaker: 'member',
+        text: 'No tengo coche ahora, el motor murió y no tengo transporte para llegar a la clínica.',
+        language: 'es',
+        timestamp: '2025-01-12T19:13:10Z',
+      },
+      {
+        speaker: 'member',
+        text: "I can't afford my medications until next paycheck. Maybe in two weeks.",
+        language: 'en',
+        timestamp: '2025-01-12T19:13:54Z',
+      },
+      {
+        speaker: 'nurse',
+        text: 'Thanks María, logging this for the care team. We will set up mail-order meds and a Lyft voucher.',
+        language: 'en',
+        timestamp: '2025-01-12T19:14:11Z',
+      },
+    ],
+  },
+];
 
 export default function Member() {
   const memberId = 'demo-member';
@@ -22,46 +115,87 @@ export default function Member() {
   const memberDob = 'Mar 14, 1952';
   const primaryCare = 'Greenwood Community Health';
 
-  const [responses, setResponses] = useState({ q1: '', q2: '' });
-  const [note, setNote] = useState('Missed meals this week; SNAP renewal pending approval.');
-  const [screeningId, setScreeningId] = useState<string | null>(null);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
-  const [isFinalized, setIsFinalized] = useState(false);
-  const [loadingAction, setLoadingAction] = useState<null | 'save' | 'suggest' | 'finalize' | 'pdf'>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedTranscriptId, setSelectedTranscriptId] = useState(transcriptSamples[0]?.id ?? '');
+  const activeTranscript = useMemo(
+    () => transcriptSamples.find((sample) => sample.id === selectedTranscriptId) ?? transcriptSamples[0],
+    [selectedTranscriptId]
+  );
 
-  const timeline: TimelineItem[] = useMemo(
+  const [analysis, setAnalysis] = useState<DetectionResponse | null>(null);
+  const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
+  const [screeningId, setScreeningId] = useState<string | null>(null);
+  const [note, setNote] = useState('Emergency pantry delivered 1/9; SNAP recertification interview pending.');
+  const [responses, setResponses] = useState({ q1: 'Sometimes true', q2: 'Often true' });
+  const [loadingAction, setLoadingAction] = useState<null | 'analyze' | 'save' | 'finalize' | 'pdf'>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isFinalized, setIsFinalized] = useState(false);
+
+  const suggestions: Suggestion[] = useMemo(() => {
+    if (!analysis) return [];
+    return analysis.issues.map((issue) => ({
+      code: issue.code,
+      label: issue.label,
+      confidence: issue.confidence,
+      severity: issue.severity,
+      urgency: issue.urgency,
+      rationale: issue.rationale,
+      evidence: issue.evidence.map((ev) => ({
+        speaker: ev.speaker,
+        text: ev.quote,
+        language: ev.language,
+        timestamp: ev.timestamp,
+      })),
+      estimatedRevenue: issue.estimatedRevenue,
+    }));
+  }, [analysis]);
+
+  const timeline = useMemo(
     () => [
       {
         title: 'Warm handoff to City Pantry',
         date: 'Jan 9, 2025',
-        description: 'Confirmed delivery of emergency food box with follow-up coaching call.',
-        status: 'completed',
+        description: 'Confirmed delivery of emergency food box with bilingual dietician follow-up.',
+        status: 'completed' as const,
       },
       {
-        title: 'SNAP renewal check-in',
-        date: 'Jan 16, 2025',
-        description: 'Assisted member with documentation upload and scheduled county interview.',
-        status: 'in-progress',
+        title: 'Utility relief escalation',
+        date: 'Jan 17, 2025',
+        description: 'Applied for LIHEAP crisis grant and notified housing stability navigator.',
+        status: 'in-progress' as const,
       },
       {
-        title: 'Nutrition education series',
-        date: 'Feb 3, 2025',
-        description: 'Group class enrollment pending confirmation from partner organization.',
-        status: 'in-progress',
+        title: 'Shelter placement review',
+        date: 'Jan 18, 2025',
+        description: 'Awaiting county response for emergency hotel placement.',
+        status: 'in-progress' as const,
       },
     ],
     []
   );
 
-  const statusLabel = isFinalized ? 'Finalized plan' : screeningId ? 'Screening saved' : 'Draft in progress';
-  const statusClass = isFinalized ? 'status-pill status-pill--finalized' : screeningId ? 'status-pill' : 'status-pill status-pill--draft';
+  const statusLabel = isFinalized ? 'Documentation finalized' : analysis ? 'AI review complete' : 'Waiting for AI review';
+  const statusClass = isFinalized ? 'status-pill status-pill--finalized' : analysis ? 'status-pill' : 'status-pill status-pill--draft';
 
-  const selectedSuggestions = useMemo(
-    () => suggestions.filter((suggestion) => selectedCodes.includes(suggestion.code)),
-    [selectedCodes, suggestions]
-  );
+  async function analyzeTranscript() {
+    if (!activeTranscript) return;
+    setError(null);
+    setLoadingAction('analyze');
+    try {
+      const payload = await api.detectTranscript({
+        memberId,
+        transcript: activeTranscript.transcript,
+        context: { requiredScreenings: 24, completedScreenings: 18 },
+      });
+      setAnalysis(payload);
+      setSelectedCodes(payload.issues.map((issue) => issue.code));
+      setIsFinalized(false);
+    } catch (err) {
+      console.error(err);
+      setError('The AI engine could not process the transcript. Try again shortly.');
+    } finally {
+      setLoadingAction(null);
+    }
+  }
 
   async function createScreening() {
     setError(null);
@@ -69,7 +203,7 @@ export default function Member() {
     try {
       const res = await api.createScreening({
         memberId,
-        domain: 'food_insecurity',
+        domain: 'multi_domain',
         responses,
         note,
       });
@@ -77,40 +211,19 @@ export default function Member() {
       setIsFinalized(false);
     } catch (err) {
       console.error(err);
-      setError('We could not save the screening. Please review the responses and try again.');
+      setError('We could not save the screening. Please review and try again.');
     } finally {
       setLoadingAction(null);
     }
   }
 
-  async function suggest() {
-    if (!screeningId) {
-      setError('Save the screening details before requesting Z-code suggestions.');
-      return;
-    }
-    setError(null);
-    setLoadingAction('suggest');
-    try {
-      const payload = await api.suggestZ(screeningId);
-      const nextSuggestions: Suggestion[] = payload?.suggestions ?? [];
-      setSuggestions(nextSuggestions);
-      setSelectedCodes(nextSuggestions.slice(0, 2).map((item) => item.code));
-      setIsFinalized(false);
-    } catch (err) {
-      console.error(err);
-      setError('Unable to fetch AI-assisted Z-code suggestions right now.');
-    } finally {
-      setLoadingAction(null);
-    }
-  }
-
-  async function finalize() {
+  async function finalizeCodes() {
     if (!screeningId) {
       setError('Save the screening before finalizing recommendations.');
       return;
     }
     if (selectedCodes.length === 0) {
-      setError('Choose at least one suggestion to finalize.');
+      setError('Select at least one recommendation to finalize.');
       return;
     }
     setError(null);
@@ -119,44 +232,51 @@ export default function Member() {
       await api.finalizeZ({
         screeningId,
         acceptedCodes: selectedCodes,
-        rationale: 'Hunger Vital Sign positive with corroborating coaching notes.',
+        rationale: 'Validated against AI-detected transcript evidence and navigator documentation.',
       });
       setIsFinalized(true);
     } catch (err) {
       console.error(err);
-      setError('There was an issue finalizing recommendations. Please try again.');
+      setError('Unable to finalize codes right now.');
     } finally {
       setLoadingAction(null);
     }
   }
 
-  async function pdf() {
-    if (selectedSuggestions.length === 0) {
-      setError('Select at least one recommendation to include in the evidence pack.');
+  async function exportPdf() {
+    if (!analysis || selectedCodes.length === 0) {
+      setError('Select recommendations and run AI review before exporting evidence.');
       return;
     }
     setError(null);
     setLoadingAction('pdf');
     try {
+      const selectedSuggestions = suggestions.filter((suggestion) => selectedCodes.includes(suggestion.code));
       const resp = await api.pdf({
         member: { id: memberId, name: memberName, dob: '1952-03-14' },
         consent: { scope: 'sdoh_evidence', collectedAt: new Date().toISOString() },
         screening: {
-          domain: 'food_insecurity',
-          instrument: 'HungerVitalSign',
+          domain: 'multi_domain',
+          instrument: 'ConversationAI',
           responses,
           note,
           createdAt: new Date().toISOString(),
         },
         referralTimeline: timeline.map((item) => ({
           orgName: item.title,
-          service: 'Food access support',
+          service: 'SDOH Support',
           status: item.status === 'completed' ? 'completed' : 'in_progress',
           occurredAt: new Date(item.date).toISOString(),
           result: item.status === 'completed' ? 'helped' : 'pending',
           note: item.description,
         })),
-        zcodes: selectedSuggestions,
+        zcodes: selectedSuggestions.map((suggestion) => ({
+          code: suggestion.code,
+          label: suggestion.label,
+          confidence: suggestion.confidence,
+          rationale: suggestion.rationale,
+          citations: suggestion.evidence.map((item) => item.text),
+        })),
         packId: crypto.randomUUID(),
         tenant: 'Demo Tenant',
       });
@@ -165,26 +285,24 @@ export default function Member() {
       window.open(url, '_blank');
     } catch (err) {
       console.error(err);
-      setError('The evidence PDF could not be generated. Please try again.');
+      setError('The evidence PDF could not be generated.');
     } finally {
       setLoadingAction(null);
     }
   }
 
-  function toggleSuggestion(code: string) {
-    setSelectedCodes((prev) =>
-      prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]
-    );
+  function toggleCode(code: string) {
+    setSelectedCodes((prev) => (prev.includes(code) ? prev.filter((item) => item !== code) : [...prev, code]));
   }
 
   return (
     <div className="page-shell">
       <section className="hero-card">
-        <span className="hero-badge">Active Member</span>
-        <h1>SDOH Navigator Workspace</h1>
+        <span className="hero-badge">AI-enabled workspace</span>
+        <h1>SDOH Intelligence Command Center</h1>
         <p>
-          Capture structured screening data, surface AI-backed Z-code recommendations, and produce
-          payer-ready evidence packs in minutes.
+          Streaming voice, SMS, and email conversations are analyzed in real time to surface Z-code opportunities,
+          produce billing-ready documentation, and quantify revenue impact.
         </p>
         <div className="hero-meta">
           <div className="hero-meta__item">
@@ -196,163 +314,295 @@ export default function Member() {
             <span>DOB</span>
           </div>
           <div className="hero-meta__item">
-            <strong>Food insecurity</strong>
-            <span>Primary domain</span>
-          </div>
-          <div className="hero-meta__item">
             <strong>{primaryCare}</strong>
             <span>Care team</span>
           </div>
+          <div className="hero-meta__item">
+            <strong>{analysis?.documentation.structured.languages.join(', ') ?? '—'}</strong>
+            <span>Languages detected</span>
+          </div>
         </div>
-      </section>
-
-      <div className="grid-layout">
-        <section className="card">
-          <div className="card__header">
-            <h2 className="card__title">Screening responses</h2>
-            <span className={statusClass}>{statusLabel}</span>
-          </div>
-
-          <div className="form-grid">
-            <div className="field">
-              <label htmlFor="q1">Hunger Vital Sign — Question 1</label>
-              <select
-                id="q1"
-                className="select"
-                value={responses.q1}
-                onChange={(e) => setResponses((prev) => ({ ...prev, q1: e.target.value }))}
-              >
-                <option value="">Select a response</option>
-                <option>Often true</option>
-                <option>Sometimes true</option>
-                <option>Never true</option>
-              </select>
-              <span className="helper-text">How often did food run out before you could afford more?</span>
-            </div>
-
-            <div className="field">
-              <label htmlFor="q2">Hunger Vital Sign — Question 2</label>
-              <select
-                id="q2"
-                className="select"
-                value={responses.q2}
-                onChange={(e) => setResponses((prev) => ({ ...prev, q2: e.target.value }))}
-              >
-                <option value="">Select a response</option>
-                <option>Often true</option>
-                <option>Sometimes true</option>
-                <option>Never true</option>
-              </select>
-              <span className="helper-text">How often were you worried food would run out?</span>
-            </div>
-
-            <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <label htmlFor="note">Care team notes</label>
-              <textarea
-                id="note"
-                className="textarea"
-                value={note}
-                rows={4}
-                onChange={(e) => setNote(e.target.value)}
-              />
-              <span className="helper-text">Include context for transportation, benefits, or coaching support.</span>
-            </div>
-          </div>
-
-          <div className="button-row">
-            <button
-              className="btn btn--primary"
-              onClick={createScreening}
-              disabled={loadingAction === 'save'}
-            >
+        <div className="hero-actions">
+          <span className={statusClass}>{statusLabel}</span>
+          <div className="hero-actions__buttons">
+            <button className="btn btn--glass" onClick={analyzeTranscript} disabled={loadingAction === 'analyze'}>
+              {loadingAction === 'analyze' ? 'Analyzing…' : 'Run AI detection'}
+            </button>
+            <button className="btn" onClick={createScreening} disabled={loadingAction === 'save'}>
               {loadingAction === 'save' ? 'Saving…' : 'Save screening'}
             </button>
-            <button
-              className="btn btn--ghost"
-              onClick={suggest}
-              disabled={!screeningId || loadingAction === 'suggest'}
-            >
-              {loadingAction === 'suggest' ? 'Requesting…' : 'Suggest Z-codes'}
+            <button className="btn btn--accent" onClick={finalizeCodes} disabled={loadingAction === 'finalize'}>
+              {loadingAction === 'finalize' ? 'Finalizing…' : 'Finalize codes'}
             </button>
-            <button
-              className="btn btn--success"
-              onClick={finalize}
-              disabled={selectedCodes.length === 0 || loadingAction === 'finalize'}
-            >
-              {loadingAction === 'finalize' ? 'Finalizing…' : 'Finalize plan'}
-            </button>
-            <button
-              className="btn btn--outline"
-              onClick={pdf}
-              disabled={selectedSuggestions.length === 0 || loadingAction === 'pdf'}
-            >
-              {loadingAction === 'pdf' ? 'Building PDF…' : 'Export evidence pack'}
+            <button className="btn btn--outline" onClick={exportPdf} disabled={loadingAction === 'pdf'}>
+              {loadingAction === 'pdf' ? 'Exporting…' : 'Export evidence pack'}
             </button>
           </div>
-
-          {error && <div className="error-banner">{error}</div>}
-        </section>
-
-        <aside className="card">
-          <div className="card__header">
-            <h2 className="card__title">Action timeline</h2>
-          </div>
-          <ul className="timeline">
-            {timeline.map((item, index) => (
-              <li key={`${item.title}-${index}`} className="timeline__item">
-                <span
-                  className={`timeline__dot ${item.status === 'completed' ? 'timeline__dot--success' : ''}`}
-                />
-                <h3 className="timeline__heading">{item.title}</h3>
-                <div className="timeline__meta">{item.date}</div>
-                <p className="timeline__description">{item.description}</p>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </div>
-
-      <section className="card" style={{ marginTop: 32 }}>
-        <div className="card__header">
-          <h2 className="card__title">AI-assisted Z-code recommendations</h2>
-          <span className="helper-text">
-            Select the options that best support the member&apos;s documented needs.
-          </span>
         </div>
+        {error && <div className="inline-error">{error}</div>}
+      </section>
 
-        {suggestions.length === 0 ? (
-          <div className="empty-state">
-            Capture the screening and request suggestions to populate this space with clinical-grade
-            Z-code insights.
-          </div>
-        ) : (
-          <div className="suggestion-list">
-            {suggestions.map((suggestion) => (
+      <section className="grid-two">
+        <div className="card transcript-card">
+          <header>
+            <h2>Conversation feeds</h2>
+            <span>Select a real transcript to test the engine.</span>
+          </header>
+          <div className="transcript-selector">
+            {transcriptSamples.map((sample) => (
               <button
-                key={suggestion.code}
-                type="button"
-                className={`suggestion ${selectedCodes.includes(suggestion.code) ? 'suggestion--selected' : ''}`}
-                onClick={() => toggleSuggestion(suggestion.code)}
+                key={sample.id}
+                className={`transcript-chip ${sample.id === activeTranscript?.id ? 'is-active' : ''}`}
+                onClick={() => setSelectedTranscriptId(sample.id)}
               >
-                <div className="suggestion__header">
-                  <span className="badge badge--code">{suggestion.code}</span>
-                  <span className="badge badge--confidence">
-                    Confidence {Math.round(suggestion.confidence * 100)}%
-                  </span>
-                </div>
-                <strong>{suggestion.label}</strong>
-                <p className="suggestion__rationale">{suggestion.rationale}</p>
-                {suggestion.citations?.length ? (
-                  <div className="citation-list">
-                    {suggestion.citations.map((citation, index) => (
-                      <span key={`${suggestion.code}-citation-${index}`}>{citation}</span>
-                    ))}
-                  </div>
-                ) : null}
+                <strong>{sample.title}</strong>
+                <span>{sample.summary}</span>
               </button>
             ))}
           </div>
-        )}
+          <div className="transcript-feed">
+            {activeTranscript?.transcript.map((entry, index) => (
+              <div key={index} className={`transcript-line transcript-line--${entry.speaker === 'member' ? 'member' : 'team'}`}>
+                <div className="transcript-line__meta">
+                  <span>{entry.speaker}</span>
+                  <span>{entry.language?.toUpperCase()}</span>
+                </div>
+                <p>{entry.text}</p>
+                {entry.timestamp && <time>{new Date(entry.timestamp).toLocaleTimeString()}</time>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card ai-results">
+          <header>
+            <h2>AI detections</h2>
+            <span>{analysis ? `${analysis.issues.length} Z-code opportunities detected` : 'Awaiting transcript analysis'}</span>
+          </header>
+          {analysis ? (
+            <div className="ai-results__list">
+              {suggestions.map((suggestion) => (
+                <label key={suggestion.code} className={`ai-result ${selectedCodes.includes(suggestion.code) ? 'is-selected' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={selectedCodes.includes(suggestion.code)}
+                    onChange={() => toggleCode(suggestion.code)}
+                  />
+                  <div className="ai-result__body">
+                    <div className="ai-result__header">
+                      <span className="ai-result__code">{suggestion.code}</span>
+                      <span className={`badge badge--${suggestion.severity}`}>{suggestion.severity}</span>
+                      <span className={`badge badge--outline badge--${suggestion.urgency}`}>{suggestion.urgency}</span>
+                      <span className="badge badge--ghost">{Math.round(suggestion.confidence * 100)}% confidence</span>
+                    </div>
+                    <h3>{suggestion.label}</h3>
+                    <p>{suggestion.rationale}</p>
+                    <div className="ai-result__evidence">
+                      {suggestion.evidence.map((item, idx) => (
+                        <blockquote key={idx}>
+                          <span>{item.speaker}</span>
+                          <p>“{item.text}”</p>
+                        </blockquote>
+                      ))}
+                    </div>
+                    <footer>
+                      <span>Estimated revenue: ${suggestion.estimatedRevenue.toFixed(0)}</span>
+                    </footer>
+                  </div>
+                </label>
+              ))}
+            </div>
+          ) : (
+            <div className="placeholder">Run the AI engine to populate detections.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid-two">
+        <div className="card documentation-card">
+          <header>
+            <h2>Clinical documentation</h2>
+            <span>Structured summaries ready for EHR import and billing compliance.</span>
+          </header>
+          {analysis ? (
+            <>
+              <div className="documentation-grid">
+                <div>
+                  <h3>Structured screening</h3>
+                  <ul>
+                    {analysis.documentation.structured.issues.map((issue) => (
+                      <li key={issue.code}>
+                        <strong>{issue.code}</strong>
+                        <span>{issue.label}</span>
+                        <span>{issue.status} · {issue.severity} severity</span>
+                        <span>{Math.round(issue.confidence * 100)}% confidence</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h3>Clinical narrative</h3>
+                  <p>{analysis.documentation.narrative}</p>
+                </div>
+              </div>
+              <div className="evidence-table">
+                <h3>Evidence snippets</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Speaker</th>
+                      <th>Quote</th>
+                      <th>Language</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analysis.documentation.evidence.map((item, index) => (
+                      <tr key={index}>
+                        <td>{item.speaker}</td>
+                        <td>“{item.quote}”</td>
+                        <td>{item.language?.toUpperCase() ?? 'EN'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="placeholder">Run detection to generate structured documentation.</div>
+          )}
+        </div>
+
+        <div className="card revenue-card">
+          <header>
+            <h2>Revenue impact dashboard</h2>
+            <span>Quantifies reimbursement opportunities unlocked this month.</span>
+          </header>
+          {analysis ? (
+            <div className="revenue-grid">
+              <div className="metric">
+                <span>Potential revenue identified</span>
+                <strong>${analysis.revenue.potentialRevenue.toLocaleString()}</strong>
+              </div>
+              <div className="metric">
+                <span>Z-codes generated this review</span>
+                <strong>{analysis.revenue.zCodesGenerated}</strong>
+              </div>
+              <div className="metric">
+                <span>Patients screened for SDOH</span>
+                <strong>
+                  {analysis.revenue.patientsScreened} / {analysis.revenue.patientsRequired}
+                </strong>
+              </div>
+              <div className="metric">
+                <span>Risk adjustment impact</span>
+                <strong>${analysis.revenue.riskAdjustmentImpact.toLocaleString()}</strong>
+              </div>
+              <div className="trend-list">
+                <h3>Trending domains</h3>
+                <ul>
+                  {analysis.revenue.prevalenceTrends.map((trend) => (
+                    <li key={trend.code}>
+                      <span>{trend.label}</span>
+                      <strong>{trend.percent}%</strong>
+                      <span className={trend.delta >= 0 ? 'trend-up' : 'trend-down'}>
+                        {trend.delta >= 0 ? '+' : ''}
+                        {trend.delta}%
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="metric">
+                <span>AI accuracy (last cohort)</span>
+                <strong>{Math.round(analysis.revenue.accuracyEstimate * 100)}%</strong>
+              </div>
+              <div className="metric">
+                <span>Average processing latency</span>
+                <strong>{(analysis.revenue.latencyEstimateMs / 1000).toFixed(1)}s</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="placeholder">Run detection to populate financial metrics.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid-two">
+        <div className="card compliance-card">
+          <header>
+            <h2>Compliance workflow</h2>
+            <span>Automated CMS readiness with proactive alerts.</span>
+          </header>
+          {analysis ? (
+            <>
+              <div className="compliance-summary">
+                <div>
+                  <span>Screening need</span>
+                  <strong>{analysis.compliance.needsScreening ? 'Due now' : 'Up to date'}</strong>
+                </div>
+                <div>
+                  <span>Next due date</span>
+                  <strong>{new Date(analysis.compliance.nextDueDate).toLocaleDateString()}</strong>
+                </div>
+                <div>
+                  <span>Completion rate</span>
+                  <strong>{analysis.compliance.completionRate}%</strong>
+                </div>
+              </div>
+              <div className="cms-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Completed</th>
+                      <th>Pending</th>
+                      <th>Overdue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analysis.compliance.cmsReport.map((row) => (
+                      <tr key={row.month}>
+                        <td>{row.month}</td>
+                        <td>{row.completed}</td>
+                        <td>{row.pending}</td>
+                        <td>{row.overdue}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="alert-stack">
+                {analysis.compliance.alerts.map((alert, index) => (
+                  <div key={index} className={`alert alert--${alert.severity}`}>
+                    <strong>{alert.severity.toUpperCase()}</strong>
+                    <span>{alert.message}</span>
+                  </div>
+                ))}
+                {analysis.compliance.alerts.length === 0 && <div className="alert alert--info">No alerts at this time.</div>}
+              </div>
+            </>
+          ) : (
+            <div className="placeholder">Run detection to update compliance queue.</div>
+          )}
+        </div>
+
+        <div className="card timeline-card">
+          <header>
+            <h2>Action timeline</h2>
+            <span>Track interventions tied to AI detected needs.</span>
+          </header>
+          <ol className="timeline">
+            {timeline.map((item, index) => (
+              <li key={index} className={`timeline__item timeline__item--${item.status}`}>
+                <div className="timeline__date">{item.date}</div>
+                <div className="timeline__content">
+                  <strong>{item.title}</strong>
+                  <p>{item.description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
       </section>
     </div>
   );
