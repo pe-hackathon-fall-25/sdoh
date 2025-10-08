@@ -1,5 +1,18 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { api, type DetectionResponse, type DetectionRunRecord } from '../api';
+import {
+  api,
+  type DetectionResponse,
+  type DetectionRunRecord,
+} from '../api';
+
+type ScenarioCategory =
+  | 'voice'
+  | 'sms'
+  | 'ehr'
+  | 'monitoring'
+  | 'alerts'
+  | 'analytics'
+  | 'post-discharge';
 
 type TranscriptMessage = {
   speaker: string;
@@ -13,61 +26,69 @@ type ScenarioDefinition = {
   icon: string;
   title: string;
   description: string;
-  category: 'voice' | 'sms' | 'ehr' | 'monitoring' | 'alerts' | 'analytics' | 'post-discharge';
+  category: ScenarioCategory;
   memberId: string;
   memberName: string;
   defaultRecipients: string[];
+  participants: string[];
   transcript: TranscriptMessage[];
   context?: Record<string, unknown>;
-  participants: string[];
 };
 
 type ToastState = { message: string; tone: 'success' | 'error' } | null;
 
-const scenarios: ScenarioDefinition[] = [
+type DetectionMap = Record<string, DetectionResponse | null>;
+
+type TranscriptMap = Record<string, TranscriptMessage[]>;
+
+type ScenarioAnalytics = {
+  issueFrequency: { name: string; count: number }[];
+  averageConfidence: { name: string; value: number }[];
+  complianceTrend: { period: string; completion: number }[];
+};
+
+const SCENARIOS: ScenarioDefinition[] = [
   {
     id: 'care-coordination',
     icon: '🩺',
     title: 'Care Coordination Calls',
     description: 'Document voice call SDOH risks with narrative summaries for case managers.',
     category: 'voice',
-    memberId: 'member-1001',
+    memberId: 'BH-1001',
     memberName: 'Alex Rivera',
-    defaultRecipients: ['care.team+alex@example.org'],
+    defaultRecipients: ['care.team@bloominghealth.com'],
     participants: ['member', 'navigator', 'case-manager'],
     transcript: [
       {
         speaker: 'navigator',
-        text: 'Hi Alex, thanks for taking the call. We are checking in on groceries and utilities this week.',
+        text: 'Hi Alex, thanks for checking in. We are reviewing food, housing, and utilities today.',
         language: 'en',
         timestamp: '2025-02-01T15:02:00Z',
       },
       {
         speaker: 'member',
-        text: 'The pantry ran out of produce and I skipped dinner twice. Mi refrigerador está casi vacío.',
+        text: 'The pantry ran out of produce and mi refrigerador está casi vacío.',
         language: 'es',
-        timestamp: '2025-02-01T15:02:21Z',
+        timestamp: '2025-02-01T15:02:18Z',
       },
       {
         speaker: 'member',
-        text: 'Our power bill is overdue and the company sent a shutoff warning for Friday.',
+        text: 'Our power bill is overdue and the company scheduled a shutoff for Friday.',
         language: 'en',
-        timestamp: '2025-02-01T15:02:58Z',
-      },
-      {
-        speaker: 'navigator',
-        text: 'We will escalate LIHEAP and emergency food. Anything else impacting you?',
-        language: 'en',
-        timestamp: '2025-02-01T15:03:21Z',
+        timestamp: '2025-02-01T15:02:51Z',
       },
       {
         speaker: 'member',
-        text: 'I sleep in the car sometimes to stay warm. Estoy muy preocupado.',
-        language: 'es',
-        timestamp: '2025-02-01T15:03:47Z',
+        text: 'I sleep in the car some nights when it gets too cold inside.',
+        language: 'en',
+        timestamp: '2025-02-01T15:03:24Z',
       },
     ],
-    context: { requiredScreenings: 24, completedScreenings: 18, monthlyGoal: 30 },
+    context: {
+      requiredScreenings: 24,
+      completedScreenings: 18,
+      monthlyGoal: 30,
+    },
   },
   {
     id: 'sms-outreach',
@@ -75,37 +96,30 @@ const scenarios: ScenarioDefinition[] = [
     title: 'Outreach SMS Screening',
     description: 'Automate texting programs that triage food, housing, and transportation needs.',
     category: 'sms',
-    memberId: 'member-2048',
+    memberId: 'BH-2048',
     memberName: 'María López',
-    defaultRecipients: ['outreach.team@example.org'],
+    defaultRecipients: ['outreach@bloominghealth.com'],
     participants: ['member', 'outreach-bot', 'care-coordinator'],
     transcript: [
       {
         speaker: 'outreach-bot',
-        text: 'Hi María, checking in. Are you managing food and housing okay this week?',
+        text: 'Hi María, how are groceries and housing this week? Reply and we will connect support.',
         language: 'en',
         timestamp: '2025-02-03T18:18:00Z',
       },
       {
         speaker: 'member',
-        text: "We're short on groceries and my landlord posted an eviction notice.",
+        text: "We are short on groceries and my landlord posted an eviction notice.",
         language: 'en',
-        timestamp: '2025-02-03T18:18:17Z',
+        timestamp: '2025-02-03T18:18:21Z',
       },
       {
         speaker: 'member',
         text: 'También necesito ayuda con transporte para llegar a la clínica.',
         language: 'es',
-        timestamp: '2025-02-03T18:18:42Z',
-      },
-      {
-        speaker: 'care-coordinator',
-        text: 'Thank you for sharing. We will schedule a follow-up to connect you with local food resources.',
-        language: 'en',
-        timestamp: '2025-02-03T18:19:08Z',
+        timestamp: '2025-02-03T18:18:48Z',
       },
     ],
-    context: { channel: 'sms', campaign: 'food-housing-outreach' },
   },
   {
     id: 'ehr-intake',
@@ -113,14 +127,14 @@ const scenarios: ScenarioDefinition[] = [
     title: 'EHR Intake Form AI Screening',
     description: 'Convert intake answers into Z-codes and FHIR attachments automatically.',
     category: 'ehr',
-    memberId: 'member-3090',
+    memberId: 'BH-3090',
     memberName: 'Jordan Ellis',
-    defaultRecipients: ['ehr.integration@example.org'],
+    defaultRecipients: ['ehr@bloominghealth.com'],
     participants: ['member', 'intake-form', 'nurse'],
     transcript: [
       {
         speaker: 'intake-form',
-        text: 'Do you currently have concerns about food, housing, or utilities?',
+        text: 'Do you have any trouble keeping food or utilities at home?',
         language: 'en',
         timestamp: '2025-02-05T14:05:00Z',
       },
@@ -132,409 +146,363 @@ const scenarios: ScenarioDefinition[] = [
       },
       {
         speaker: 'member',
-        text: 'My rent went up $400 and I cannot keep up. Estoy atrasado con el pago.',
+        text: 'My rent went up $400 and estoy atrasado con el pago.',
         language: 'es',
         timestamp: '2025-02-05T14:06:12Z',
       },
-      {
-        speaker: 'nurse',
-        text: 'Thank you, we will document this and connect you to housing navigation.',
-        language: 'en',
-        timestamp: '2025-02-05T14:06:45Z',
-      },
     ],
-    context: { encounterId: 'enc-3090', site: 'Greenwood Community Health' },
+    context: {
+      encounterId: 'enc-3090',
+      site: 'Greenwood Community Health',
+    },
   },
   {
     id: 'elderly-check-in',
     icon: '👵',
     title: 'Elderly Weekly Check-In',
-    description: 'Blend voice + SMS responses from aging members to escalate urgent needs.',
+    description: 'Blend voice and SMS responses from aging members to escalate urgent needs.',
     category: 'monitoring',
-    memberId: 'member-4120',
+    memberId: 'BH-4120',
     memberName: 'Evelyn Smith',
-    defaultRecipients: ['aging.services@example.org'],
+    defaultRecipients: ['aging@bloominghealth.com'],
     participants: ['member', 'ivr', 'care-navigator'],
     transcript: [
       {
         speaker: 'ivr',
-        text: 'Press 1 if you are having trouble affording groceries this week.',
+        text: 'Press 1 if you are having trouble affording groceries.',
         language: 'en',
-        timestamp: '2025-02-07T10:01:00Z',
+        timestamp: '2025-02-07T16:00:00Z',
       },
       {
         speaker: 'member',
-        text: 'I pressed 1. The store prices doubled and my pantry is empty.',
+        text: 'I pressed 1 because my pantry is empty and I have not eaten a full meal in two days.',
         language: 'en',
-        timestamp: '2025-02-07T10:01:22Z',
+        timestamp: '2025-02-07T16:00:24Z',
       },
       {
         speaker: 'member',
-        text: 'También necesito transporte para mi cita cardiológica.',
+        text: 'El bus ya no llega a mi parada y no puedo ir al mercado.',
         language: 'es',
-        timestamp: '2025-02-07T10:01:58Z',
-      },
-      {
-        speaker: 'care-navigator',
-        text: 'Noted Evelyn, we will send a care coordinator to follow up today.',
-        language: 'en',
-        timestamp: '2025-02-07T10:02:31Z',
+        timestamp: '2025-02-07T16:01:02Z',
       },
     ],
-    context: { channel: 'voice', cadence: 'weekly' },
   },
   {
     id: 'care-team-alerts',
     icon: '🚨',
     title: 'Care Team Alerts',
-    description: 'Trigger critical alerts when multiple SDOH risks are detected.',
+    description: 'Spot multi-risk cases and escalate them to supervisors with dashboards.',
     category: 'alerts',
-    memberId: 'member-5233',
-    memberName: 'Samuel Green',
-    defaultRecipients: ['quality.team@example.org'],
-    participants: ['member', 'nurse', 'social-worker'],
+    memberId: 'BH-5230',
+    memberName: 'Tariq Jones',
+    defaultRecipients: ['quality@bloominghealth.com'],
+    participants: ['member', 'navigator', 'pharmacist'],
     transcript: [
       {
-        speaker: 'nurse',
-        text: 'Samuel, tell me how you are doing with housing and medication today.',
+        speaker: 'navigator',
+        text: 'Tariq, we noticed you reported issues with food and medication pickups.',
         language: 'en',
-        timestamp: '2025-02-08T09:10:00Z',
+        timestamp: '2025-02-08T18:10:00Z',
       },
       {
         speaker: 'member',
-        text: 'I am sleeping on my sister’s couch. The shelter waitlist is 6 weeks.',
+        text: 'The pharmacy is far and I missed two doses because I could not afford the ride.',
         language: 'en',
-        timestamp: '2025-02-08T09:10:25Z',
+        timestamp: '2025-02-08T18:10:36Z',
       },
       {
         speaker: 'member',
-        text: 'No puedo pagar mis medicamentos para la diabetes este mes.',
-        language: 'es',
-        timestamp: '2025-02-08T09:11:00Z',
-      },
-      {
-        speaker: 'social-worker',
-        text: 'We will prioritize your case and loop in the medication assistance team.',
+        text: 'Our fridge is empty until my next check comes in.',
         language: 'en',
-        timestamp: '2025-02-08T09:11:40Z',
+        timestamp: '2025-02-08T18:11:04Z',
       },
     ],
-    context: { dashboardUrl: 'https://portal.example.org/care-team/tasks' },
   },
   {
     id: 'population-analytics',
     icon: '📊',
     title: 'Population Health Analytics',
-    description: 'Aggregate AI detections for monthly compliance and revenue dashboards.',
+    description: 'Summarize common SDOH issues, revenue, and completion trends across members.',
     category: 'analytics',
-    memberId: 'cohort-analytics',
-    memberName: 'Cohort Summary',
-    defaultRecipients: ['population.health@example.org'],
-    participants: ['analyst', 'ai-engine'],
+    memberId: 'BH-COHORT',
+    memberName: 'Population Cohort',
+    defaultRecipients: ['analytics@bloominghealth.com'],
+    participants: ['member', 'analyst', 'community-worker'],
     transcript: [
       {
         speaker: 'analyst',
-        text: 'Generate a report for January cohorts with AI-detected SDOH trends.',
+        text: 'Aggregating the latest member conversations to quantify food and housing needs.',
         language: 'en',
-        timestamp: '2025-02-09T12:20:00Z',
       },
       {
-        speaker: 'ai-engine',
-        text: 'Detected 128 members with food insecurity and 74 with housing instability.',
-        language: 'en',
-        timestamp: '2025-02-09T12:20:33Z',
-      },
-      {
-        speaker: 'ai-engine',
-        text: 'Average screening completion 82%. Revenue lift estimate $214,000.',
-        language: 'en',
-        timestamp: '2025-02-09T12:21:05Z',
-      },
-      {
-        speaker: 'analyst',
-        text: 'Highlight members overdue for screenings and compliance gaps.',
-        language: 'en',
-        timestamp: '2025-02-09T12:21:41Z',
+        speaker: 'community-worker',
+        text: 'Most members cite groceries and rent support. Necesitamos más recursos de vivienda.',
+        language: 'es',
       },
     ],
-    context: { cohortSize: 420, reportingMonth: '2025-01' },
   },
   {
     id: 'post-discharge',
     icon: '🏥',
     title: 'Post-Discharge Follow-Up',
-    description: 'Capture barriers after discharge and route referrals instantly.',
+    description: 'Detect barriers after discharge and route referrals to prevent readmissions.',
     category: 'post-discharge',
-    memberId: 'member-6344',
-    memberName: 'Tiana Brooks',
-    defaultRecipients: ['transitions@example.org'],
-    participants: ['member', 'transition-nurse'],
+    memberId: 'BH-6150',
+    memberName: 'Danielle Carter',
+    defaultRecipients: ['transitions@bloominghealth.com'],
+    participants: ['member', 'nurse', 'care-coordinator'],
     transcript: [
       {
-        speaker: 'transition-nurse',
-        text: 'Hi Tiana, were you able to pick up your medications after leaving the hospital?',
+        speaker: 'nurse',
+        text: 'Hi Danielle, were you able to pick up medications and groceries after discharge?',
         language: 'en',
-        timestamp: '2025-02-10T16:45:00Z',
       },
       {
         speaker: 'member',
-        text: 'No, I could not afford the copay and I have no ride to the pharmacy.',
+        text: 'Not yet, the pharmacy co-pay was too high and I have no groceries left.',
         language: 'en',
-        timestamp: '2025-02-10T16:45:32Z',
       },
       {
         speaker: 'member',
-        text: 'También necesito comida suave porque mis encías duelen.',
+        text: 'Mi hermano me ayuda pero también está sin trabajo.',
         language: 'es',
-        timestamp: '2025-02-10T16:46:01Z',
-      },
-      {
-        speaker: 'transition-nurse',
-        text: 'We will send a care coordinator with groceries and arrange medication delivery.',
-        language: 'en',
-        timestamp: '2025-02-10T16:46:28Z',
       },
     ],
-    context: { dischargeDate: '2025-02-08', encounterId: 'enc-6344' },
   },
 ];
 
-type ScenarioFilterValue = ScenarioDefinition['category'] | 'all';
+function createInitialTranscriptState(): TranscriptMap {
+  return SCENARIOS.reduce<TranscriptMap>((acc, scenario) => {
+    acc[scenario.id] = scenario.transcript;
+    return acc;
+  }, {});
+}
 
-const scenarioFilters: { value: ScenarioFilterValue; label: string }[] = [
-  { value: 'all', label: 'All scenarios' },
-  { value: 'voice', label: 'Voice' },
-  { value: 'sms', label: 'SMS' },
-  { value: 'ehr', label: 'EHR' },
-  { value: 'monitoring', label: 'Monitoring' },
-  { value: 'alerts', label: 'Alerts' },
-  { value: 'analytics', label: 'Analytics' },
-  { value: 'post-discharge', label: 'Post-discharge' },
-];
+function formatTimestamp(timestamp?: string) {
+  if (!timestamp) return 'Now';
+  try {
+    return new Intl.DateTimeFormat('en', {
+      hour: 'numeric',
+      minute: '2-digit',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(timestamp));
+  } catch (error) {
+    return timestamp;
+  }
+}
 
-const timeFilters = [
-  { value: '24h', label: 'Last 24h' },
-  { value: '7d', label: '7 days' },
-  { value: '30d', label: '30 days' },
-  { value: 'all', label: 'All time' },
-];
+function getScenarioById(id: string | null) {
+  if (!id) return null;
+  return SCENARIOS.find((scenario) => scenario.id === id) ?? null;
+}
 
-type TimeFilterValue = (typeof timeFilters)[number]['value'];
+function toIssueFrequency(detections: DetectionRunRecord[]): ScenarioAnalytics['issueFrequency'] {
+  const counts = new Map<string, number>();
+  detections.forEach((detection) => {
+    detection.issues.forEach((issue) => {
+      const key = `${issue.code} ${issue.label}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+  });
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
+}
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+function toAverageConfidence(detections: DetectionRunRecord[]): ScenarioAnalytics['averageConfidence'] {
+  const grouped = new Map<string, { total: number; count: number }>();
+  detections.forEach((detection) => {
+    if (!detection.issues.length) return;
+    const confidence =
+      detection.issues.reduce((sum, issue) => sum + issue.confidence, 0) / detection.issues.length;
+    const current = grouped.get(detection.scenarioName) ?? { total: 0, count: 0 };
+    grouped.set(detection.scenarioName, { total: current.total + confidence, count: current.count + 1 });
+  });
+  return Array.from(grouped.entries())
+    .map(([name, value]) => ({ name, value: Number((value.total / value.count).toFixed(2)) }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+}
+
+function toComplianceTrend(detections: DetectionRunRecord[]): ScenarioAnalytics['complianceTrend'] {
+  const grouped = new Map<string, number[]>();
+  detections.forEach((detection) => {
+    const completion = detection.compliance?.completionRate;
+    if (typeof completion === 'number') {
+      const period = new Date(detection.createdAt).toISOString().slice(0, 10);
+      const arr = grouped.get(period) ?? [];
+      arr.push(completion);
+      grouped.set(period, arr);
+    }
+  });
+  return Array.from(grouped.entries())
+    .sort(([a], [b]) => (a > b ? 1 : -1))
+    .map(([period, values]) => ({
+      period,
+      completion: Number((values.reduce((s, v) => s + v, 0) / values.length).toFixed(2)),
+    }))
+    .slice(-7);
+}
+
+function buildAnalytics(detections: DetectionRunRecord[]): ScenarioAnalytics {
+  return {
+    issueFrequency: toIssueFrequency(detections),
+    averageConfidence: toAverageConfidence(detections),
+    complianceTrend: toComplianceTrend(detections),
+  };
 }
 
 export default function ScenariosDashboard() {
-  const [selectedScenarioId, setSelectedScenarioId] = useState<string>(scenarios[0]?.id ?? '');
-  const [transcripts, setTranscripts] = useState<Record<string, TranscriptMessage[]>>(() => {
-    const initial: Record<string, TranscriptMessage[]> = {};
-    for (const scenario of scenarios) {
-      initial[scenario.id] = scenario.transcript;
-    }
-    return initial;
-  });
-  const [detections, setDetections] = useState<Record<string, DetectionResponse | null>>({});
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(SCENARIOS[0]?.id ?? null);
+  const [transcripts, setTranscripts] = useState<TranscriptMap>(() => createInitialTranscriptState());
+  const [detections, setDetections] = useState<DetectionMap>({});
   const [recentDetections, setRecentDetections] = useState<DetectionRunRecord[]>([]);
-  const [loadingScenario, setLoadingScenario] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<ToastState>(null);
-  const [scenarioFilter, setScenarioFilter] = useState<ScenarioFilterValue>('all');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [timeFilter, setTimeFilter] = useState<TimeFilterValue>('30d');
-  const [draftMessage, setDraftMessage] = useState<{ speaker: string; text: string; language: string }>({
-    speaker: scenarios[0]?.participants[0] ?? 'member',
-    text: '',
-    language: '',
+  const [filters, setFilters] = useState({
+    category: 'all' as 'all' | ScenarioCategory,
+    search: '',
+    timeRange: '30d' as '7d' | '30d' | '90d',
   });
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-
-  const selectedScenario = useMemo(
-    () => scenarios.find((scenario) => scenario.id === selectedScenarioId) ?? scenarios[0],
-    [selectedScenarioId]
-  );
-
-  const scenarioMessages = transcripts[selectedScenarioId] ?? [];
-  const activeDetection = detections[selectedScenarioId] ?? null;
-
-  const transcriptLanguages = useMemo(() => {
-    const langs = new Set<string>();
-    scenarioMessages.forEach((message) => {
-      if (message.language) langs.add(message.language);
-    });
-    return Array.from(langs);
-  }, [scenarioMessages]);
+  const [toast, setToast] = useState<ToastState>(null);
+  const [loadingDetect, setLoadingDetect] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await api.listDetections(25);
-        if (!cancelled) {
-          setRecentDetections(response.detections);
-        }
-      } catch (err) {
-        console.error('Failed to load detections', err);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    api
+      .listDetections(25)
+      .then((response) => setRecentDetections(response.detections ?? []))
+      .catch(() => {
+        setRecentDetections([]);
+      });
   }, []);
 
   useEffect(() => {
-    if (!selectedScenario) return;
-    setDraftMessage((current) => ({
-      speaker: selectedScenario.participants.includes(current.speaker)
-        ? current.speaker
-        : selectedScenario.participants[0] ?? 'member',
-      text: '',
-      language: '',
-    }));
-    setEditingIndex(null);
-  }, [selectedScenario]);
-
-  useEffect(() => {
     if (!toast) return;
-    const timeout = setTimeout(() => setToast(null), 3600);
+    const timeout = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(timeout);
   }, [toast]);
 
+  const selectedScenario = getScenarioById(selectedScenarioId);
+  const transcript = selectedScenario ? transcripts[selectedScenario.id] ?? [] : [];
+  const detection = selectedScenario ? detections[selectedScenario.id] ?? null : null;
+
   const filteredScenarios = useMemo(() => {
-    return scenarios.filter((scenario) => {
-      const matchesFilter = scenarioFilter === 'all' || scenario.category === scenarioFilter;
-      const matchesSearch = scenario.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        scenario.description.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesFilter && matchesSearch;
+    return SCENARIOS.filter((scenario) => {
+      if (filters.category !== 'all' && scenario.category !== filters.category) return false;
+      if (!filters.search) return true;
+      const haystack = `${scenario.title} ${scenario.description}`.toLowerCase();
+      return haystack.includes(filters.search.toLowerCase());
     });
-  }, [scenarioFilter, searchTerm]);
+  }, [filters]);
 
   const filteredRecentDetections = useMemo(() => {
-    const now = Date.now();
     const cutoff = (() => {
-      switch (timeFilter) {
-        case '24h':
-          return now - 24 * 60 * 60 * 1000;
-        case '7d':
-          return now - 7 * 24 * 60 * 60 * 1000;
-        case '30d':
-          return now - 30 * 24 * 60 * 60 * 1000;
-        default:
-          return 0;
+      const now = new Date();
+      if (filters.timeRange === '7d') {
+        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       }
+      if (filters.timeRange === '30d') {
+        return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      }
+      return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
     })();
-    return recentDetections.filter((detection) => {
-      if (cutoff === 0) return true;
-      const created = new Date(detection.createdAt).getTime();
-      if (Number.isNaN(created)) return true;
-      return created >= cutoff;
-    });
-  }, [recentDetections, timeFilter]);
+    return recentDetections.filter((row) => new Date(row.createdAt) >= cutoff);
+  }, [recentDetections, filters.timeRange]);
 
-  const issueFrequencyData = useMemo(() => {
-    const counts = new Map<string, { code: string; label: string; count: number }>();
-    filteredRecentDetections.forEach((record) => {
-      record.issues.forEach((issue) => {
-        if (!counts.has(issue.code)) {
-          counts.set(issue.code, { code: issue.code, label: issue.label, count: 0 });
-        }
-        counts.get(issue.code)!.count += 1;
-      });
-    });
-    return Array.from(counts.values())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6)
-      .map((item) => ({ name: `${item.code}`, label: item.label, count: item.count }));
-  }, [filteredRecentDetections]);
+  const analytics = useMemo(() => buildAnalytics(filteredRecentDetections), [filteredRecentDetections]);
 
-  const confidenceByScenarioData = useMemo(() => {
-    const aggregate = new Map<string, { scenario: string; total: number; count: number }>();
-    filteredRecentDetections.forEach((record) => {
-      if (!aggregate.has(record.scenarioName)) {
-        aggregate.set(record.scenarioName, { scenario: record.scenarioName, total: 0, count: 0 });
-      }
-      const bucket = aggregate.get(record.scenarioName)!;
-      record.issues.forEach((issue) => {
-        bucket.total += issue.confidence;
-        bucket.count += 1;
-      });
-    });
-    return Array.from(aggregate.values()).map((entry) => ({
-      scenario: entry.scenario,
-      averageConfidence: entry.count ? Number((entry.total / entry.count).toFixed(2)) : 0,
-    }));
-  }, [filteredRecentDetections]);
+  function handleSelectScenario(id: string) {
+    setSelectedScenarioId(id);
+  }
 
-  const complianceTrendData = useMemo(() => {
-    return filteredRecentDetections
-      .filter((record) => typeof record.compliance?.completionRate === 'number')
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      .slice(-10)
-      .map((record) => ({
-        date: new Date(record.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        rate: Number((record.compliance?.completionRate ?? 0).toFixed(2)),
-      }));
-  }, [filteredRecentDetections]);
-
-  const maxIssueCount = useMemo(
-    () => Math.max(1, ...issueFrequencyData.map((item) => item.count)),
-    [issueFrequencyData]
-  );
-
-  const confidencePercentData = useMemo(
-    () =>
-      confidenceByScenarioData.map((item) => ({
-        scenario: item.scenario,
-        percent: Math.round(item.averageConfidence * 1000) / 10,
-      })),
-    [confidenceByScenarioData]
-  );
-
-  async function runDetection() {
+  function handleLoadExample() {
     if (!selectedScenario) return;
-    const transcript = transcripts[selectedScenario.id] ?? [];
-    if (transcript.length === 0) {
-      setError('Add at least one message before running detection.');
-      return;
-    }
+    setTranscripts((current) => ({
+      ...current,
+      [selectedScenario.id]: [...selectedScenario.transcript],
+    }));
+  }
 
-    setLoadingScenario(selectedScenario.id);
-    setError(null);
+  function handleEditMessage(index: number, field: keyof TranscriptMessage, value: string) {
+    if (!selectedScenario) return;
+    setTranscripts((current) => {
+      const nextMessages = [...(current[selectedScenario.id] ?? [])];
+      nextMessages[index] = { ...nextMessages[index], [field]: value };
+      return { ...current, [selectedScenario.id]: nextMessages };
+    });
+  }
+
+  function handleAddMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedScenario) return;
+    const formData = new FormData(event.currentTarget);
+    const speaker = (formData.get('speaker') as string) || 'member';
+    const text = (formData.get('text') as string) || '';
+    const language = (formData.get('language') as string) || undefined;
+    if (!text.trim()) return;
+
+    setTranscripts((current) => ({
+      ...current,
+      [selectedScenario.id]: [
+        ...(current[selectedScenario.id] ?? []),
+        { speaker, text, language, timestamp: new Date().toISOString() },
+      ],
+    }));
+
+    event.currentTarget.reset();
+  }
+
+  async function handleRunDetection() {
+    if (!selectedScenario) return;
+    setLoadingDetect(true);
     try {
-      const detection = await api.detectTranscript({
+      const result = await api.detectTranscript({
         memberId: selectedScenario.memberId,
         transcript,
         context: selectedScenario.context,
       });
-      setDetections((prev) => ({ ...prev, [selectedScenario.id]: detection }));
+      setDetections((current) => ({ ...current, [selectedScenario.id]: result }));
 
       try {
-        await api.recordDetection({
+        const record = await api.recordDetection({
           scenarioId: selectedScenario.id,
           scenarioName: selectedScenario.title,
           memberId: selectedScenario.memberId,
           memberName: selectedScenario.memberName,
-          detection,
+          detection: result,
         });
-        const refreshed = await api.listDetections(25);
-        setRecentDetections(refreshed.detections);
-      } catch (recordError) {
-        console.warn('Failed to persist detection', recordError);
+        if (record?.id) {
+          setRecentDetections((current) => [
+            {
+              id: record.id,
+              scenarioId: selectedScenario.id,
+              scenarioName: selectedScenario.title,
+              memberId: selectedScenario.memberId,
+              memberName: selectedScenario.memberName,
+              issues: result.issues,
+              narrative: result.documentation?.narrative,
+              revenue: result.revenue,
+              compliance: result.compliance,
+              createdAt: new Date().toISOString(),
+            },
+            ...current,
+          ].slice(0, 50));
+        }
+      } catch (error) {
+        console.error('Failed to record detection', error);
       }
-    } catch (err) {
-      console.error(err);
-      setError('The AI engine could not process the transcript. Try again shortly.');
+    } catch (error) {
+      console.error('Detection failed', error);
+      setToast({ message: 'Unable to run detection. Please try again.', tone: 'error' });
     } finally {
-      setLoadingScenario(null);
+      setLoadingDetect(false);
     }
   }
 
-  async function sendSummaryEmail() {
-    if (!selectedScenario) return;
-    const detection = detections[selectedScenario.id];
-    if (!detection) return;
+  async function handleSendEmail() {
+    if (!selectedScenario || !detection) return;
+    setSendingEmail(true);
     try {
       await api.sendSummaryEmail({
         to: selectedScenario.defaultRecipients,
@@ -545,417 +513,364 @@ export default function ScenariosDashboard() {
         detection,
       });
       setToast({ message: 'Email sent successfully to care team.', tone: 'success' });
-    } catch (err) {
-      console.error(err);
-      setToast({ message: 'Unable to send summary email. Check SendGrid settings.', tone: 'error' });
+    } catch (error) {
+      console.error('Failed to send email', error);
+      setToast({ message: 'Unable to send email. Check SendGrid settings.', tone: 'error' });
+    } finally {
+      setSendingEmail(false);
     }
   }
 
-  function startEditMessage(index: number) {
-    const message = scenarioMessages[index];
-    if (!message || !selectedScenario) return;
-    setDraftMessage({
-      speaker: message.speaker,
-      text: message.text,
-      language: message.language ?? '',
-    });
-    setEditingIndex(index);
-  }
-
-  function removeMessage(index: number) {
-    setTranscripts((prev) => ({
-      ...prev,
-      [selectedScenarioId]: (prev[selectedScenarioId] ?? []).filter((_, idx) => idx !== index),
-    }));
-    setEditingIndex(null);
-    setDraftMessage((current) => ({ ...current, text: '', language: '' }));
-  }
-
-  function handleMessageSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!selectedScenario) return;
-    const text = draftMessage.text.trim();
-    if (!text) return;
-    const payload: TranscriptMessage = {
-      speaker: draftMessage.speaker,
-      text,
-      language: draftMessage.language.trim() || undefined,
-      timestamp: new Date().toISOString(),
-    };
-    setTranscripts((prev) => {
-      const existing = prev[selectedScenario.id] ?? [];
-      if (editingIndex !== null) {
-        const next = [...existing];
-        next.splice(editingIndex, 1, { ...existing[editingIndex], ...payload });
-        return { ...prev, [selectedScenario.id]: next };
-      }
-      return { ...prev, [selectedScenario.id]: [...existing, payload] };
-    });
-    setDraftMessage({ speaker: draftMessage.speaker, text: '', language: '' });
-    setEditingIndex(null);
-  }
-
   return (
-    <div className="page-shell scenarios-shell">
+    <div className="scenarios-shell">
       <header className="scenarios-header">
         <div>
-          <span className="hero-badge">SDOH AI Pipelines</span>
-          <h1>Scenario Control Center</h1>
-          <p>
-            Orchestrate care coordination, outreach, intake, monitoring, alerts, analytics, and post-discharge workflows — all
-            powered by the AI detection engine and SendGrid notifications.
+          <p className="scenarios-subtitle">Blooming Health • SDOH AI Journeys</p>
+          <h1>Scenario Playbooks</h1>
+          <p className="scenarios-description">
+            Simulate seven real-world pipelines, detect SDOH risks, and trigger SendGrid documentation in minutes.
           </p>
         </div>
-        <div className="scenarios-filters">
-          <label>
-            <span>Scenario type</span>
-            <select value={scenarioFilter} onChange={(event) => setScenarioFilter(event.target.value as ScenarioFilterValue)}>
-              {scenarioFilters.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Search</span>
-            <input
-              type="search"
-              placeholder="Search scenarios"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          </label>
-          <label>
-            <span>Time filter</span>
-            <select value={timeFilter} onChange={(event) => setTimeFilter(event.target.value as TimeFilterValue)}>
-              {timeFilters.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="scenarios-profile">
+          <span className="scenarios-logo">🌱</span>
+          <div>
+            <strong>Care Manager</strong>
+            <span>Blooming Health</span>
+          </div>
         </div>
       </header>
 
-      <section className="scenario-grid">
-        {filteredScenarios.map((scenario) => (
-          <button
-            key={scenario.id}
-            className={`scenario-card${scenario.id === selectedScenarioId ? ' scenario-card--active' : ''}`}
-            type="button"
-            onClick={() => setSelectedScenarioId(scenario.id)}
-          >
-            <div className="scenario-card__icon">{scenario.icon}</div>
-            <div>
-              <h3>{scenario.title}</h3>
+      <section className="scenarios-filters">
+        <select
+          value={filters.category}
+          onChange={(event) =>
+            setFilters((current) => ({ ...current, category: event.target.value as typeof filters.category }))
+          }
+        >
+          <option value="all">All scenario types</option>
+          <option value="voice">Voice & hybrid</option>
+          <option value="sms">SMS outreach</option>
+          <option value="ehr">EHR intake</option>
+          <option value="monitoring">Monitoring</option>
+          <option value="alerts">Alerts</option>
+          <option value="analytics">Analytics</option>
+          <option value="post-discharge">Post-discharge</option>
+        </select>
+        <input
+          type="search"
+          placeholder="Search scenarios"
+          value={filters.search}
+          onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+        />
+        <select
+          value={filters.timeRange}
+          onChange={(event) =>
+            setFilters((current) => ({ ...current, timeRange: event.target.value as typeof filters.timeRange }))
+          }
+        >
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="90d">Last 90 days</option>
+        </select>
+      </section>
+
+      <section className="scenarios-grid">
+        {filteredScenarios.map((scenario) => {
+          const isActive = scenario.id === selectedScenarioId;
+          return (
+            <button
+              key={scenario.id}
+              type="button"
+              className={`scenario-card${isActive ? ' scenario-card--active' : ''}`}
+              onClick={() => handleSelectScenario(scenario.id)}
+            >
+              <span className="scenario-icon">{scenario.icon}</span>
+              <h2>{scenario.title}</h2>
               <p>{scenario.description}</p>
-            </div>
-            <footer>
-              <span>{scenario.memberName}</span>
-              <span className="scenario-card__tag">{scenario.category}</span>
-            </footer>
-          </button>
-        ))}
+              <span className="scenario-cta">Start Scenario →</span>
+            </button>
+          );
+        })}
       </section>
 
       {selectedScenario && (
-        <section className="scenario-detail">
-          <div className="transcript-panel">
-            <header>
-              <h2>
+        <section className="scenario-workspace">
+          <div className="scenario-main">
+            <div className="transcript-header">
+              <h3>
                 {selectedScenario.icon} {selectedScenario.title}
-              </h2>
-              <span className="status-pill">Member ID: {selectedScenario.memberId}</span>
-            </header>
-            <div className="transcript-messages">
-              {scenarioMessages.map((message, index) => (
-                <div
-                  key={`${message.timestamp ?? index}-${index}`}
-                  className={`message-bubble message-bubble--${message.speaker === 'member' ? 'member' : 'staff'}`}
-                >
-                  <div className="message-meta">
-                    <strong>{message.speaker}</strong>
-                    {message.language && <span className="message-language">{message.language}</span>}
-                    {message.timestamp && <time>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>}
-                  </div>
-                  <p>{message.text}</p>
-                  <div className="message-actions">
-                    <button type="button" onClick={() => startEditMessage(index)}>
-                      Edit
-                    </button>
-                    <button type="button" onClick={() => removeMessage(index)}>
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {scenarioMessages.length === 0 && <p className="empty-state">No transcript messages yet. Add one below to get started.</p>}
+              </h3>
+              <div className="transcript-actions">
+                <button type="button" onClick={handleLoadExample} className="secondary-btn">
+                  Load example transcript
+                </button>
+                <button type="button" onClick={handleRunDetection} disabled={loadingDetect} className="primary-btn">
+                  {loadingDetect ? 'Running detection…' : 'Run AI Detection'}
+                </button>
+              </div>
             </div>
 
-            <form className="add-message" onSubmit={handleMessageSubmit}>
-              <div className="add-message__controls">
-                <label>
-                  <span>Speaker</span>
-                  <select
-                    value={draftMessage.speaker}
-                    onChange={(event) => setDraftMessage((prev) => ({ ...prev, speaker: event.target.value }))}
-                  >
-                    {selectedScenario.participants.map((participant) => (
-                      <option key={participant} value={participant}>
-                        {participant}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Language</span>
-                  <input
-                    value={draftMessage.language}
-                    onChange={(event) => setDraftMessage((prev) => ({ ...prev, language: event.target.value }))}
-                    placeholder="en, es, ..."
-                  />
-                </label>
-              </div>
-              <textarea
-                placeholder="Add message"
-                value={draftMessage.text}
-                onChange={(event) => setDraftMessage((prev) => ({ ...prev, text: event.target.value }))}
-                rows={3}
-              />
-              <div className="add-message__actions">
-                <button className="btn" type="submit">
-                  {editingIndex !== null ? 'Update message' : 'Add message'}
-                </button>
-                {editingIndex !== null && (
-                  <button
-                    className="btn btn--glass"
-                    type="button"
-                    onClick={() => {
-                      setEditingIndex(null);
-                      setDraftMessage((prev) => ({ ...prev, text: '', language: '' }));
-                    }}
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  className="btn btn--accent"
-                  type="button"
-                  onClick={runDetection}
-                  disabled={loadingScenario === selectedScenario.id}
-                >
-                  {loadingScenario === selectedScenario.id ? 'Analyzing…' : 'Run AI Detection'}
-                </button>
-              </div>
-            </form>
-            {error && <p className="error-banner">{error}</p>}
-          </div>
-
-          <div className="results-panel">
-            <header>
-              <h3>Detected SDOH Issues</h3>
-              {activeDetection && <span>{activeDetection.issues.length} issues</span>}
-            </header>
-            {!activeDetection && <p className="empty-state">Run the AI detection to see structured outputs.</p>}
-            {activeDetection && (
-              <ul className="issues-list">
-                {activeDetection.issues.map((issue) => (
-                  <li key={issue.code}>
-                    <div className="issue-header">
-                      <strong>
-                        {issue.code} · {issue.label}
-                      </strong>
-                      <span className={`issue-pill issue-pill--${issue.severity.toLowerCase()}`}>{issue.severity}</span>
-                    </div>
-                    <div className="issue-meta">
-                      <span>Urgency: {issue.urgency}</span>
-                      <span>Confidence: {(issue.confidence * 100).toFixed(1)}%</span>
-                    </div>
-                    <p>{issue.rationale}</p>
-                    {issue.evidence.length > 0 && (
-                      <details>
-                        <summary>Evidence ({issue.evidence.length})</summary>
-                        <ul>
-                          {issue.evidence.map((ev, idx) => (
-                            <li key={`${ev.quote}-${idx}`}>
-                              <span>{ev.speaker}</span>: “{ev.quote}”{' '}
-                              {ev.language && <em>({ev.language})</em>}
-                            </li>
-                          ))}
-                        </ul>
-                      </details>
-                    )}
+            <div className="transcript-simulator">
+              <ul>
+                {transcript.map((message, index) => (
+                  <li key={`${message.speaker}-${index}`} className={`message message--${message.speaker}`}>
+                    <header>
+                      <strong>{message.speaker}</strong>
+                      <span>{formatTimestamp(message.timestamp)}</span>
+                      {message.language && <span className="language-chip">{message.language}</span>}
+                    </header>
+                    <textarea
+                      value={message.text}
+                      onChange={(event) => handleEditMessage(index, 'text', event.target.value)}
+                    />
                   </li>
                 ))}
               </ul>
-            )}
-            {activeDetection && (
-              <button className="btn btn--glass send-email" type="button" onClick={sendSummaryEmail}>
-                📧 Send Summary Email
-              </button>
-            )}
-          </div>
-
-          <aside className="insights-panel">
-            <h3>AI Narrative & Insights</h3>
-            {activeDetection ? (
-              <>
-                <p className="narrative">{activeDetection.documentation.narrative}</p>
-                <div className="insight-block">
-                  <h4>Potential Revenue</h4>
-                  <p>${activeDetection.revenue.potentialRevenue.toLocaleString()}</p>
-                </div>
-                <div className="insight-block">
-                  <h4>Compliance completion</h4>
-                  <p>{activeDetection.compliance.completionRate.toFixed(1)}%</p>
-                </div>
-                {activeDetection.compliance.alerts.length > 0 && (
-                  <div className="insight-block">
-                    <h4>Alerts</h4>
-                    <ul>
-                      {activeDetection.compliance.alerts.map((alert, idx) => (
-                        <li key={`${alert.message}-${idx}`}>{alert.message}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="empty-state">Insights will appear after the AI detection runs.</p>
-            )}
-            <div className="insight-block">
-              <h4>Languages</h4>
-              {transcriptLanguages.length ? (
-                <div className="language-tags">
-                  {transcriptLanguages.map((language) => (
-                    <span key={language}>{language}</span>
+              <form className="message-form" onSubmit={handleAddMessage}>
+                <select name="speaker">
+                  {selectedScenario.participants.map((participant) => (
+                    <option key={participant} value={participant}>
+                      {participant}
+                    </option>
                   ))}
+                </select>
+                <input name="language" placeholder="Language (en, es, …)" />
+                <input name="text" placeholder="Add message" />
+                <button type="submit" className="primary-btn">
+                  Add
+                </button>
+              </form>
+            </div>
+
+            <div className="detection-panel">
+              <h3>Detected SDOH issues</h3>
+              {!detection && <p className="panel-placeholder">Run detection to see Z-code insights.</p>}
+              {detection && (
+                <div className="detection-results">
+                  <div className="issue-chips">
+                    {detection.issues.length === 0 ? (
+                      <span className="chip chip--neutral">No active risks detected</span>
+                    ) : (
+                      detection.issues.map((issue) => (
+                        <span key={issue.code} className="chip">
+                          {issue.code} • {issue.label}
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  {detection.issues.length > 0 && (
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Issue</th>
+                          <th>Confidence</th>
+                          <th>Severity</th>
+                          <th>Urgency</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detection.issues.map((issue) => (
+                          <tr key={`${issue.code}-${issue.rationale}`}>
+                            <td>{issue.label}</td>
+                            <td>{Math.round(issue.confidence * 100)}%</td>
+                            <td className={`severity severity--${issue.severity}`}>{issue.severity}</td>
+                            <td className={`urgency urgency--${issue.urgency}`}>{issue.urgency}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={handleSendEmail}
+                    disabled={sendingEmail || !detection}
+                  >
+                    {sendingEmail ? 'Sending…' : '📧 Send Summary Email'}
+                  </button>
                 </div>
-              ) : (
-                <p>No language metadata</p>
               )}
             </div>
+          </div>
+
+          <aside className="scenario-sidebar">
+            <section>
+              <h4>Narrative summary</h4>
+              <p>{detection?.documentation?.narrative ?? 'Narrative will appear after detection runs.'}</p>
+            </section>
+            <section>
+              <h4>Compliance & alerts</h4>
+              {detection?.compliance ? (
+                <ul>
+                  <li>
+                    Completion rate:{' '}
+                    <strong>{Math.round((detection.compliance.completionRate ?? 0) * 100)}%</strong>
+                  </li>
+                  <li>Needs screening: {detection.compliance.needsScreening ? 'Yes' : 'No'}</li>
+                  {detection.compliance.alerts?.map((alert, index) => (
+                    <li key={index} className={`alert alert--${alert.severity}`}>
+                      {alert.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="panel-placeholder">Compliance metrics will surface after detection.</p>
+              )}
+            </section>
+            <section>
+              <h4>Revenue insights</h4>
+              {detection?.revenue ? (
+                <ul>
+                  <li>
+                    Potential revenue:{' '}
+                    <strong>${(detection.revenue.potentialRevenue ?? 0).toLocaleString()}</strong>
+                  </li>
+                  <li>Z-codes generated: {detection.revenue.zCodesGenerated ?? 0}</li>
+                  <li>
+                    Accuracy estimate: {Math.round((detection.revenue.accuracyEstimate ?? 0) * 100)}%
+                  </li>
+                </ul>
+              ) : (
+                <p className="panel-placeholder">Run detection to quantify revenue impact.</p>
+              )}
+            </section>
+            <section>
+              <h4>Languages detected</h4>
+              <div className="language-pills">
+                {(detection?.documentation?.structured?.languages ?? transcript
+                  .map((message) => message.language)
+                  .filter(Boolean))
+                  .filter((value, index, array) => value && array.indexOf(value) === index)
+                  .map((language) => (
+                    <span key={language} className="chip chip--neutral">
+                      {language}
+                    </span>
+                  ))}
+                {(!detection || detection.documentation?.structured?.languages?.length === 0) && (
+                  <span className="chip chip--neutral">en</span>
+                )}
+              </div>
+            </section>
           </aside>
         </section>
       )}
 
       <section className="analytics-section">
-        <div className="analytics-card">
-          <h3>Detected issues by frequency</h3>
-          {issueFrequencyData.length === 0 ? (
-            <p className="empty-state">Run detections to populate analytics.</p>
-          ) : (
+        <h3>Program analytics</h3>
+        <div className="analytics-grid">
+          <div className="analytics-card">
+            <h4>Detected issues by frequency</h4>
             <ul className="analytics-bars">
-              {issueFrequencyData.map((item) => (
+              {analytics.issueFrequency.length === 0 && (
+                <li className="panel-placeholder">No detections recorded in this window.</li>
+              )}
+              {analytics.issueFrequency.map((item) => (
                 <li key={item.name}>
                   <div className="analytics-bars__label">
                     <span>{item.name}</span>
                     <span>{item.count}</span>
                   </div>
                   <div className="analytics-bars__meter">
-                    <span style={{ width: `${Math.round((item.count / maxIssueCount) * 100)}%` }} />
+                    <span style={{ width: `${Math.min(item.count * 12, 100)}%` }} />
                   </div>
-                  <p className="analytics-bars__caption">{item.label}</p>
                 </li>
               ))}
             </ul>
-          )}
-        </div>
-        <div className="analytics-card">
-          <h3>Average confidence by scenario</h3>
-          {confidencePercentData.length === 0 ? (
-            <p className="empty-state">Confidence metrics will appear after detections are saved.</p>
-          ) : (
+          </div>
+          <div className="analytics-card">
+            <h4>Average confidence per scenario</h4>
             <ul className="analytics-bars">
-              {confidencePercentData.map((item) => (
-                <li key={item.scenario}>
+              {analytics.averageConfidence.length === 0 && (
+                <li className="panel-placeholder">Run detections to measure accuracy.</li>
+              )}
+              {analytics.averageConfidence.map((item) => (
+                <li key={item.name}>
                   <div className="analytics-bars__label">
-                    <span>{item.scenario}</span>
-                    <span>{item.percent.toFixed(1)}%</span>
+                    <span>{item.name}</span>
+                    <span>{Math.round(item.value * 100)}%</span>
                   </div>
                   <div className="analytics-bars__meter analytics-bars__meter--teal">
-                    <span style={{ width: `${Math.min(100, Math.max(0, item.percent))}%` }} />
+                    <span style={{ width: `${Math.round(item.value * 100)}%` }} />
                   </div>
                 </li>
               ))}
             </ul>
-          )}
-        </div>
-        <div className="analytics-card">
-          <h3>Compliance rate trend</h3>
-          {complianceTrendData.length === 0 ? (
-            <p className="empty-state">No compliance trend data yet.</p>
-          ) : (
+          </div>
+          <div className="analytics-card">
+            <h4>Compliance rate trend</h4>
             <ul className="compliance-trend">
-              {complianceTrendData.map((item) => (
-                <li key={`${item.date}-${item.rate}`}>
+              {analytics.complianceTrend.length === 0 && (
+                <li className="panel-placeholder">Compliance signals will appear after detections.</li>
+              )}
+              {analytics.complianceTrend.map((item) => (
+                <li key={item.period}>
                   <div className="compliance-trend__meta">
-                    <strong>{item.date}</strong>
-                    <span>{item.rate}%</span>
+                    <span>{item.period}</span>
+                    <span>{item.completion}%</span>
                   </div>
                   <div className="compliance-trend__meter">
-                    <span style={{ width: `${Math.min(100, Math.max(0, item.rate))}%` }} />
+                    <span style={{ width: `${Math.min(item.completion, 100)}%` }} />
                   </div>
                 </li>
               ))}
             </ul>
-          )}
+          </div>
         </div>
       </section>
 
       <section className="recent-detections">
-        <header>
-          <h2>Recent detections</h2>
-          <span>{filteredRecentDetections.length} records</span>
-        </header>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Scenario</th>
-                <th>Member</th>
-                <th>Issues</th>
-                <th>Top issue</th>
-                <th>Potential revenue</th>
-                <th>Compliance</th>
-                <th>Detected at</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecentDetections.map((record) => {
-                const topIssue = record.issues[0];
-                return (
-                  <tr key={record.id}>
-                    <td>{record.scenarioName}</td>
-                    <td>{record.memberName ?? record.memberId}</td>
-                    <td>{record.issues.length}</td>
-                    <td>{topIssue ? `${topIssue.code} · ${topIssue.label}` : '—'}</td>
-                    <td>
-                      {typeof record.revenue?.potentialRevenue === 'number'
-                        ? `$${Number(record.revenue.potentialRevenue).toLocaleString()}`
-                        : '—'}
-                    </td>
-                    <td>
-                      {typeof record.compliance?.completionRate === 'number'
-                        ? `${Number(record.compliance.completionRate).toFixed(1)}%`
-                        : '—'}
-                    </td>
-                    <td>{formatDate(record.createdAt)}</td>
-                  </tr>
-                );
-              })}
-              {filteredRecentDetections.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="empty-state">
-                    No detections saved for this time range yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="recent-header">
+          <h3>Recent detections</h3>
+          <span>{filteredRecentDetections.length} results</span>
         </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Scenario</th>
+              <th>Issues</th>
+              <th>Confidence</th>
+              <th>Compliance</th>
+              <th>Recorded</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRecentDetections.length === 0 && (
+              <tr>
+                <td colSpan={6} className="panel-placeholder">
+                  Run a detection to populate the timeline.
+                </td>
+              </tr>
+            )}
+            {filteredRecentDetections.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <strong>{row.memberName ?? row.memberId}</strong>
+                  <span className="table-subtitle">{row.memberId}</span>
+                </td>
+                <td>{row.scenarioName}</td>
+                <td>
+                  {row.issues.length === 0
+                    ? 'No risks'
+                    : row.issues.map((issue) => issue.code).join(', ')}
+                </td>
+                <td>
+                  {row.issues.length
+                    ? `${Math.round(
+                        (row.issues.reduce((sum, issue) => sum + issue.confidence, 0) / row.issues.length) * 100,
+                      )}%`
+                    : '—'}
+                </td>
+                <td>
+                  {typeof row.compliance?.completionRate === 'number'
+                    ? `${Math.round(row.compliance.completionRate * 100)}%`
+                    : '—'}
+                </td>
+                <td>{formatTimestamp(row.createdAt)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       {toast && <div className={`toast toast--${toast.tone}`}>{toast.message}</div>}
