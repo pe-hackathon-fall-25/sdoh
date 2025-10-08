@@ -61,6 +61,19 @@ export type DetectionResponse = {
   debug?: { fallbackUsed: boolean; model?: string };
 };
 
+export type DetectionRunRecord = {
+  id: string;
+  scenarioId: string;
+  scenarioName: string;
+  memberId: string;
+  memberName?: string | null;
+  issues: DetectionResponse['issues'];
+  narrative?: string | null;
+  revenue?: DetectionResponse['revenue'] | null;
+  compliance?: DetectionResponse['compliance'] | null;
+  createdAt: string;
+};
+
 export const api = {
   createScreening: (body: any) =>
     fetch(`${base}/api/screenings`, {
@@ -91,5 +104,34 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+    }).then((r) => r.json()),
+  sendSummaryEmail: (payload: {
+    to: string[];
+    scenarioId?: string;
+    scenarioName: string;
+    memberId: string;
+    memberName?: string;
+    detection: DetectionResponse;
+  }) =>
+    fetch(`${base}/api/ai/send-summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then((r) => r.json()),
+  recordDetection: (payload: {
+    scenarioId: string;
+    scenarioName: string;
+    memberId: string;
+    memberName?: string;
+    detection: DetectionResponse;
+  }) =>
+    fetch(`${base}/api/ai/detections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then((r) => r.json()),
+  listDetections: (limit = 10): Promise<{ detections: DetectionRunRecord[] }> =>
+    fetch(`${base}/api/ai/detections?limit=${limit}`, {
+      headers: { 'Content-Type': 'application/json' },
     }).then((r) => r.json()),
 };

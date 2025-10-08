@@ -92,3 +92,16 @@ export const auditEvents = pgTable('audit_events', {
   details: jsonb('details'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
+
+export const aiDetections = pgTable('ai_detections', {
+  id: uuid('id').primaryKey(),
+  scenarioId: text('scenario_id').notNull(),
+  scenarioName: text('scenario_name').notNull(),
+  memberId: text('member_id').notNull(),
+  memberName: text('member_name'),
+  issues: jsonb('issues').notNull(),
+  narrative: text('narrative'),
+  revenue: jsonb('revenue'),
+  compliance: jsonb('compliance'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
