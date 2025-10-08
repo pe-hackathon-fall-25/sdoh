@@ -21,3 +21,31 @@ paths:
     post:
       summary: Generate evidence PDF
       responses: { '200': { description: ok } }
+  /api/scenarios/care-coordination-call:
+    post:
+      summary: Orchestrate care coordination call workflow
+      responses: { '200': { description: ok } }
+  /api/scenarios/sms-screening:
+    post:
+      summary: Handle SMS screening conversation
+      responses: { '200': { description: ok } }
+  /api/scenarios/ehr-intake:
+    post:
+      summary: Process intake form for EHR integration
+      responses: { '200': { description: ok } }
+  /api/scenarios/monitoring:
+    post:
+      summary: Evaluate hybrid voice/SMS monitoring responses
+      responses: { '200': { description: ok } }
+  /api/scenarios/care-team-alert:
+    post:
+      summary: Generate care team alert and email notification
+      responses: { '200': { description: ok } }
+  /api/scenarios/population-health:
+    post:
+      summary: Aggregate population health metrics from detections
+      responses: { '200': { description: ok } }
+  /api/scenarios/post-discharge:
+    post:
+      summary: Process post-discharge follow-up response
+      responses: { '200': { description: ok } }

@@ -40,6 +40,18 @@ Open:
 - **api/** OpenAPI stub
 - **docker-compose.yml** Postgres + Adminer (http://localhost:8080)
 
+## Real-world automation playbooks
+
+Use the new `/api/scenarios/*` endpoints to emulate end-to-end pipelines for common SDOH touchpoints:
+
+- `POST /api/scenarios/care-coordination-call` – ingest call transcripts, detect Z-codes, and emit email-ready action plans for case managers.
+- `POST /api/scenarios/sms-screening` – triage inbound SMS replies, auto-respond, and notify coordinators.
+- `POST /api/scenarios/ehr-intake` – transform intake forms into FHIR-like bundles with recommended Z-codes.
+- `POST /api/scenarios/monitoring` – prioritize hybrid voice/SMS wellness checks for senior populations.
+- `POST /api/scenarios/care-team-alert` – raise alerts and link out to dashboards when multiple high-risk needs surface.
+- `POST /api/scenarios/population-health` – roll up detection results for analytics, prevalence, and revenue insights.
+- `POST /api/scenarios/post-discharge` – capture barriers right after discharge and trigger rapid follow-up.
+
 ## Next steps (optional)
 - Wire real auth + tenant resolution (JWT → `x-tenant-id` header).
 - Flesh out referrals/outcomes persistence and PDF timeline fetching from DB.
