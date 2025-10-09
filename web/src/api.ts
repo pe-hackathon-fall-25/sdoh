@@ -7,6 +7,41 @@ type ConversationMessage = {
   timestamp?: string;
 };
 
+export type CallTranscriptMessage = ConversationMessage;
+
+export type CallSummary = {
+  id: string;
+  memberId: string;
+  memberName?: string | null;
+  direction: string;
+  fromNumber?: string | null;
+  toNumber?: string | null;
+  status: string;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  durationSeconds?: number | null;
+  transcriptMessageCount: number;
+  lastDetection?: { id: string; createdAt: string; issueCount: number } | null;
+};
+
+export type CallDetectionRecord = {
+  id: string;
+  engine?: string | null;
+  issues: DetectionResponse['issues'];
+  documentation?: DetectionResponse['documentation'] | null;
+  revenue?: DetectionResponse['revenue'] | null;
+  compliance?: DetectionResponse['compliance'] | null;
+  narrative?: string | null;
+  createdAt: string;
+};
+
+export type CallDetail = {
+  call: CallSummary;
+  transcript: { messages: CallTranscriptMessage[]; updatedAt: string | null };
+  detections: CallDetectionRecord[];
+  metadata?: Record<string, unknown> | null;
+};
+
 export type DetectionResponse = {
   engine: string;
   issues: {
@@ -133,5 +168,44 @@ export const api = {
   listDetections: (limit = 10): Promise<{ detections: DetectionRunRecord[] }> =>
     fetch(`${base}/api/ai/detections?limit=${limit}`, {
       headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json()),
+  createCall: (payload: {
+    memberId: string;
+    to: string;
+    from?: string;
+    direction?: 'outbound' | 'inbound';
+    transcript?: CallTranscriptMessage[];
+    metadata?: Record<string, unknown>;
+  }): Promise<{ call?: CallSummary; transcript?: { messages: CallTranscriptMessage[] }; detections?: CallDetectionRecord[] }> =>
+    fetch(`${base}/api/calls`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then((r) => r.json()),
+  listCalls: (limit = 25): Promise<{ calls: CallSummary[] }> =>
+    fetch(`${base}/api/calls?limit=${limit}`, {
+      headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json()),
+  getCall: (id: string): Promise<CallDetail> =>
+    fetch(`${base}/api/calls/${id}`, {
+      headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json()),
+  runCallDetection: (
+    id: string,
+    body?: { context?: Record<string, unknown> }
+  ): Promise<{ detectionId: string; detection: DetectionResponse }> =>
+    fetch(`${base}/api/calls/${id}/run-detection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    }).then((r) => r.json()),
+  sendCallSummary: (
+    id: string,
+    payload: { to: string[]; detectionId?: string; subject?: string; intro?: string }
+  ) =>
+    fetch(`${base}/api/calls/${id}/send-summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     }).then((r) => r.json()),
 };

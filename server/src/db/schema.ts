@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, timestamp, integer } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable('tenants', {
   id: uuid('id').primaryKey(),
@@ -103,5 +103,48 @@ export const aiDetections = pgTable('ai_detections', {
   narrative: text('narrative'),
   revenue: jsonb('revenue'),
   compliance: jsonb('compliance'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+export const calls = pgTable('calls', {
+  id: uuid('id').primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  memberId: uuid('member_id').notNull().references(() => members.id),
+  direction: text('direction').notNull().default('outbound'),
+  fromNumber: text('from_number'),
+  toNumber: text('to_number'),
+  status: text('status').notNull().default('initiated'),
+  twilioCallSid: text('twilio_call_sid'),
+  metadata: jsonb('metadata'),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow(),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
+  durationSeconds: integer('duration_seconds'),
+  summaryEmailSentAt: timestamp('summary_email_sent_at', { withTimezone: true }),
+  lastDetectionId: uuid('last_detection_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const callTranscripts = pgTable('call_transcripts', {
+  id: uuid('id').primaryKey(),
+  callId: uuid('call_id')
+    .notNull()
+    .references(() => calls.id, { onDelete: 'cascade' }),
+  messages: jsonb('messages').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const callDetections = pgTable('call_detections', {
+  id: uuid('id').primaryKey(),
+  callId: uuid('call_id')
+    .notNull()
+    .references(() => calls.id, { onDelete: 'cascade' }),
+  engine: text('engine'),
+  issues: jsonb('issues').notNull(),
+  documentation: jsonb('documentation'),
+  revenue: jsonb('revenue'),
+  compliance: jsonb('compliance'),
+  narrative: text('narrative'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
