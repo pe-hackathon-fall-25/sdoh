@@ -120,6 +120,7 @@ export const calls = pgTable('calls', {
   endedAt: timestamp('ended_at', { withTimezone: true }),
   durationSeconds: integer('duration_seconds'),
   transcript: jsonb('transcript'),
+  detectionResult: jsonb('detection_result'),
   analysis: jsonb('analysis'),
   analysisRunAt: timestamp('analysis_run_at', { withTimezone: true }),
   summaryEmail: jsonb('summary_email'),
