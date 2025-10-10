@@ -6,10 +6,13 @@ import evidence from './routes/evidence';
 import ai from './routes/ai';
 import scenarios from './routes/scenarios';
 import detections from './routes/detections';
+import calls from './routes/calls';
+import voice from './routes/voice';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
@@ -19,6 +22,8 @@ app.use('/api/evidence', evidence);
 app.use('/api/ai', ai);
 app.use('/api/scenarios', scenarios);
 app.use('/api/ai/detections', detections);
+app.use('/api/calls', calls);
+app.use('/api/voice', voice);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
