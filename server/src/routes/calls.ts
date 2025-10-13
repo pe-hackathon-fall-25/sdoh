@@ -265,8 +265,7 @@ r.get('/:id', async (req, res, next) => {
 r.post('/:id/detect', async (req, res, next) => {
   try {
     const row = await getCallOrThrow(req.params.id);
-    // const transcript = toTranscriptArray(row.metadata.transcript);
-    const transcript = toTranscriptArray(row.transcript);
+    const transcript = toTranscriptArray(row.metadata.transcript);
     if (!transcript.length) {
       const error = new Error('Transcript not available for this call yet.');
       (error as any).status = 400;
