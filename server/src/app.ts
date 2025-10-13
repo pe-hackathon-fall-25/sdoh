@@ -51,7 +51,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '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'
+  apiKey: process.env.OPENAI_API_KEY
 });
 
 

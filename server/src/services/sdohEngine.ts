@@ -454,14 +454,14 @@ function computeCompliance(request: DetectionRequest, issues: IssueMatch[]): Com
 }
 
 async function callOpenAI(request: DetectionRequest): Promise<IssueMatch[] | null> {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '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'
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY
   if (!OPENAI_API_KEY) {
     return null;
   }
 
   try {
   const { OpenAI } = await import('openai');
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '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'});
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY});
   const transcriptText = request.transcript
     .map((message) => `${message.speaker}: ${message.text}`)
     .join('\n');
