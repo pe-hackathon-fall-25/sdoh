@@ -7,6 +7,25 @@ type ConversationMessage = {
   timestamp?: string;
 };
 
+export type CallTranscriptMessage = {
+  speaker: string;
+  text: string;
+  language?: string;
+  timestamp?: string;
+  startTime?: string;
+  endTime?: string;
+  confidence?: number;
+};
+
+export type VoiceDialResult = {
+  provider: 'twilio' | 'stub';
+  sid: string;
+  status: string;
+  delivered: boolean;
+  preview?: { to: string; from?: string; url?: string; twiml?: string };
+  error?: string;
+};
+
 export type DetectionResponse = {
   engine: string;
   issues: {
@@ -74,6 +93,38 @@ export type DetectionRunRecord = {
   createdAt: string;
 };
 
+export type CallSummaryEmail = {
+  to: string[];
+  delivered: boolean;
+  provider: string;
+  sentAt?: string;
+  status?: number | string;
+  messageId?: string;
+  preview?: { to: string[]; subject: string; text: string; html?: string } | null;
+  error?: string;
+};
+
+export type CallRecord = {
+  id: string;
+  memberId?: string | null;
+  memberName?: string | null;
+  callSid?: string | null;
+  direction: string;
+  status: string;
+  toNumber?: string | null;
+  fromNumber?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  durationSeconds?: number | null;
+  transcript: CallTranscriptMessage[];
+  analysis?: DetectionResponse | null;
+  analysisRunAt?: string | null;
+  summaryEmail?: CallSummaryEmail | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 export const api = {
   createScreening: (body: any) =>
     fetch(`${base}/api/screenings`, {
@@ -133,5 +184,31 @@ export const api = {
   listDetections: (limit = 10): Promise<{ detections: DetectionRunRecord[] }> =>
     fetch(`${base}/api/ai/detections?limit=${limit}`, {
       headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json()),
+  initiateCall: (payload: { to: string; from?: string; memberId?: string; memberName?: string; metadata?: Record<string, unknown> }):
+    Promise<{ call: CallRecord; dial: VoiceDialResult }> =>
+    fetch(`${base}/api/calls/outbound`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then((r) => r.json()),
+  listCalls: (limit = 25): Promise<{ calls: CallRecord[] }> =>
+    fetch(`${base}/api/calls?limit=${limit}`, {
+      headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json()),
+  getCall: (id: string): Promise<{ call: CallRecord }> =>
+    fetch(`${base}/api/calls/${id}`, {
+      headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json()),
+  runCallDetection: (id: string): Promise<{ call: CallRecord; detection: DetectionResponse }> =>
+    fetch(`${base}/api/calls/${id}/detect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }).then((r) => r.json()),
+  sendCallSummary: (id: string, payload: { to: string[] }): Promise<{ call: CallRecord; email: unknown }> =>
+    fetch(`${base}/api/calls/${id}/send-summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     }).then((r) => r.json()),
 };
