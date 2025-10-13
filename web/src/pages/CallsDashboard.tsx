@@ -328,17 +328,17 @@ export default function CallsDashboard() {
                 <div className="call-transcript">
                   <div className="call-panel__header">
                     <h3>Transcript</h3>
-                    <span>{selectedCall.transcript.length} turn{selectedCall.transcript.length === 1 ? '' : 's'}</span>
+                    <span>{selectedCall.metadata?.transcript?.length} turn{selectedCall.metadata?.transcript?.length === 1 ? '' : 's'}</span>
                   </div>
-                  {selectedCall.transcript.length === 0 && (
+                  {selectedCall.metadata?.transcript?.length === 0 && (
                     <p className="panel-placeholder">
                       Waiting for Twilio media stream to close the call. We store patient & navigator sides together when the call
                       ends.
                     </p>
                   )}
-                  {selectedCall.transcript.length > 0 && (
+                  {selectedCall.metadata?.transcript?.length > 0 && (
                     <ul className="call-transcript__list">
-                      {selectedCall.transcript.map((message, index) => (
+                      {selectedCall.metadata?.transcript.map((message, index) => (
                         <li key={`${message.speaker}-${index}`} className={`call-message call-message--${message.speaker}`}>
                           <header>
                             <strong>{message.speaker}</strong>
@@ -453,12 +453,12 @@ export default function CallsDashboard() {
                       <section>
                         <h4>Languages detected</h4>
                         <div className="language-pills">
-                          {uniqueLanguages(selectedCall.transcript, selectedCall.analysis).map((language) => (
+                          {uniqueLanguages(selectedCall.metadata?.transcript, selectedCall.analysis).map((language) => (
                             <span key={language} className="chip chip--neutral">
                               {language}
                             </span>
                           ))}
-                          {uniqueLanguages(selectedCall.transcript, selectedCall.analysis).length === 0 && (
+                          {uniqueLanguages(selectedCall.metadata?.transcript, selectedCall.analysis).length === 0 && (
                             <span className="chip chip--neutral">en</span>
                           )}
                         </div>

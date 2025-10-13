@@ -25,7 +25,7 @@ function twimlStreamUrl(): string {
   if (configured && configured.trim()) {
     return configured.trim();
   }
-  return absoluteUrl('/api/voice/stream');
+  return absoluteUrl('wss://d28bb2db86a4.ngrok-free.app/api/voice/stream');
 }
 
 function parseDate(value: unknown): Date | null {

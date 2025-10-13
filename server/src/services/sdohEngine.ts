@@ -454,61 +454,68 @@ function computeCompliance(request: DetectionRequest, issues: IssueMatch[]): Com
 }
 
 async function callOpenAI(request: DetectionRequest): Promise<IssueMatch[] | null> {
-  if (!process.env.OPENAI_API_KEY) {
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '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'
+  if (!OPENAI_API_KEY) {
     return null;
   }
 
   try {
-    const { OpenAI } = await import('openai');
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const transcriptText = request.transcript
-      .map((message) => `${message.speaker}: ${message.text}`)
-      .join('\n');
+  const { OpenAI } = await import('openai');
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || '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'});
+  const transcriptText = request.transcript
+    .map((message) => `${message.speaker}: ${message.text}`)
+    .join('\n');
 
-    const prompt = [
-      'You are a clinical documentation specialist extracting Social Determinants of Health (SDOH) indicators from multi-language transcripts.',
-      'Return a JSON array with objects: code, label, domain, severity (low|moderate|high), urgency (low|medium|high), status (current|resolved|historical), confidence (0-1), rationale, estimatedRevenue (number), evidence array of {quote, speaker}.',
-      'Focus on ICD-10 Z-codes related to housing, food, financial, transportation, utility, safety, and social support needs.',
-      'Transcript:',
-      transcriptText,
-    ].join('\n\n');
+  const systemPrompt = 'You are a clinical documentation specialist extracting Social Determinants of Health (SDOH) indicators from multi-language transcripts. Return a JSON object with an "issues" array containing objects with: code, label, domain, severity (low|moderate|high), urgency (low|medium|high), status (current|resolved|historical), confidence (0-1), rationale, estimatedRevenue (number), evidence array of {quote, speaker}. Focus on ICD-10 Z-codes related to housing, food, financial, transportation, utility, safety, and social support needs.';
 
-    const response = await client.responses.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      input: prompt,
-      response_format: { type: 'json_object' },
-      temperature: 0.2,
-    });
+  const userPrompt = `Analyze this transcript and extract SDOH issues:\n\n${transcriptText}`;
 
-    const content = response.output_text;
-    const json = JSON.parse(content || '{}');
-    if (!Array.isArray(json.issues)) {
-      return null;
-    }
+  const response = await client.chat.completions.create({
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt
+      },
+      {
+        role: 'user',
+        content: userPrompt
+      }
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.2,
+  });
 
-    return json.issues.map((item: any) => ({
-      code: item.code,
-      label: item.label,
-      domain: item.domain || 'sdoh',
-      severity: item.severity || 'moderate',
-      urgency: item.urgency || 'medium',
-      status: item.status || 'current',
-      confidence: parseFloat(parseFloat(item.confidence ?? 0.7).toFixed(2)),
-      evidence: Array.isArray(item.evidence)
-        ? item.evidence.map((ev: any) => ({
-            quote: ev.quote,
-            speaker: ev.speaker || 'member',
-            timestamp: ev.timestamp,
-            language: normalizeLanguage(ev.language),
-          }))
-        : [],
-      rationale: item.rationale || 'AI generated rationale.',
-      estimatedRevenue: parseFloat(item.estimatedRevenue ?? 100),
-    }));
-  } catch (error) {
-    console.error('OpenAI detection failed, using fallback', error);
+  const content = response.choices[0]?.message?.content;
+  const json = JSON.parse(content || '{}');
+  if (!Array.isArray(json.issues)) {
+    console.warn('OpenAI response missing issues array:', json);
     return null;
   }
+
+  return json.issues.map((item: any) => ({
+    code: item.code,
+    label: item.label,
+    domain: item.domain || 'sdoh',
+    severity: item.severity || 'moderate',
+    urgency: item.urgency || 'medium',
+    status: item.status || 'current',
+    confidence: parseFloat(parseFloat(item.confidence ?? 0.7).toFixed(2)),
+    evidence: Array.isArray(item.evidence)
+      ? item.evidence.map((ev: any) => ({
+          quote: ev.quote,
+          speaker: ev.speaker || 'member',
+          timestamp: ev.timestamp,
+          language: normalizeLanguage(ev.language),
+        }))
+      : [],
+    rationale: item.rationale || 'AI generated rationale.',
+    estimatedRevenue: parseFloat(item.estimatedRevenue ?? 100),
+  }));
+} catch (error) {
+  console.error('OpenAI detection failed, using fallback', error);
+  return null;
+}
 }
 
 export async function detectConversation(request: DetectionRequest): Promise<DetectionResponse> {

@@ -20,5 +20,9 @@
     "@types/node": "^24.7.0",
     "@types/pdfkit": "^0.17.3",
     "concurrently": "^9.0.0"
+  },
+  "dependencies": {
+    "wav": "^1.0.2",
+    "ws": "^8.18.3"
   }
 }

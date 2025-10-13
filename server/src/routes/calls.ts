@@ -85,8 +85,8 @@ r.post('/outbound', async (req, res, next) => {
     const dial = await initiateVoiceCall({
       to: body.to,
       from: body.from,
-      url: process.env.TWILIO_VOICE_TWIML_URL,
-      statusCallback: process.env.TWILIO_STATUS_CALLBACK_URL,
+      url: `https://d28bb2db86a4.ngrok-free.app` + '/' + process.env.TWILIO_VOICE_TWIML_URL,
+      statusCallback: `https://d28bb2db86a4.ngrok-free.app` + '/' + process.env.TWILIO_STATUS_CALLBACK_URL,
       record: true,
     });
 
@@ -265,6 +265,7 @@ r.get('/:id', async (req, res, next) => {
 r.post('/:id/detect', async (req, res, next) => {
   try {
     const row = await getCallOrThrow(req.params.id);
+    // const transcript = toTranscriptArray(row.metadata.transcript);
     const transcript = toTranscriptArray(row.transcript);
     if (!transcript.length) {
       const error = new Error('Transcript not available for this call yet.');
