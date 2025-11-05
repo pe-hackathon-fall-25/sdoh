@@ -65,3 +65,6 @@ server/node_modules/
 
 # --- Misc tooling ---
 *.iml
+
+# --- Presentations ---
+presentations/*.pptx
